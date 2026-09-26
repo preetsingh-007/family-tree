@@ -92,6 +92,7 @@ describe('publishing to GitHub', () => {
     await user.type(screen.getByLabelText('Passphrase', { selector: 'input' }), PASSPHRASE);
     await user.click(screen.getByRole('button', { name: /Unlock/ }));
     await screen.findByRole('button', { name: 'More actions' }, { timeout: 10_000 });
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
     expect(within(peopleList()).getByRole('button', { name: /^Arthur Testfield/ })).toBeInTheDocument();
 
     await addPersonViaForm(user, 'Added', 'Later');

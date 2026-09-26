@@ -825,8 +825,12 @@ textarea.input {
   min-width: 0;
   max-width: 100%;
 }
-.tree-title:hover {
+button.tree-title:hover {
   background: var(--surface-2);
+}
+h1.tree-title {
+  margin: 0;
+  cursor: default;
 }
 .tree-title-text {
   white-space: nowrap;
@@ -855,6 +859,9 @@ textarea.input {
   border-radius: 50%;
   background: #4a8a5c;
   flex-shrink: 0;
+}
+.save-status.view-only .save-dot {
+  background: var(--text-muted);
 }
 .save-status.dirty .save-dot {
   background: #c98a1b;
@@ -1489,6 +1496,11 @@ body.resizing-panes {
   object-fit: cover;
   border-radius: 8px;
   background: var(--surface-2);
+}
+.photo-caption {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }
 .photo-actions {
   display: flex;

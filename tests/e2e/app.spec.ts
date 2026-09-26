@@ -109,7 +109,10 @@ test('opens an encrypted tree published with the site', async ({ page }) => {
   await card.getByRole('button', { name: 'Unlock' }).click();
   await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
   await page.getByRole('button', { name: 'Unlock' }).click();
-  await expect(page.getByRole('button', { name: /Hosted family/ })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'Hosted family' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('View only')).toBeVisible();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Hosted family/ })).toBeVisible();
 });
 
 test('keeps working offline once loaded', async ({ page, context }) => {

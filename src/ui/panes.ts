@@ -68,6 +68,15 @@ function savePanes(panes: PaneLayout) {
   }
 }
 
+function initialPanes(viewOnly: boolean): PaneLayout {
+  const panes = loadPanes();
+  if (viewOnly) {
+    panes.left.collapsed = true;
+    panes.right.collapsed = true;
+  }
+  return panes;
+}
+
 export interface PaneControls {
   panes: PaneLayout;
   setWidth: (side: PaneSide, width: number) => void;
@@ -76,23 +85,42 @@ export interface PaneControls {
   reset: (side: PaneSide) => void;
 }
 
-export function usePanes(): PaneControls {
-  const [panes, setPanes] = useState<PaneLayout>(loadPanes);
-  useEffect(() => savePanes(panes), [panes]);
+/**
+ * With `viewOnly`, both panes start collapsed and changes are not remembered, so
+ * browsing a published tree never overwrites the layout used for editing. When
+ * `viewOnly` turns off, the remembered layout comes back.
+ */
+export function usePanes(viewOnly = false): PaneControls {
+  const [state, setState] = useState(() => ({ viewOnly, panes: initialPanes(viewOnly) }));
+  if (state.viewOnly !== viewOnly) setState({ viewOnly, panes: initialPanes(viewOnly) });
+  const { panes } = state;
+  useEffect(() => {
+    if (!state.viewOnly) savePanes(state.panes);
+  }, [state]);
 
-  const update = useCallback((side: PaneSide, patch: Partial<PaneState>) => {
-    setPanes((current) => {
-      const next = { ...current[side], ...patch };
-      if (next.width === current[side].width && next.collapsed === current[side].collapsed) return current;
-      return { ...current, [side]: next };
+  const setPanes = useCallback((change: (current: PaneLayout) => PaneLayout) => {
+    setState((s) => {
+      const next = change(s.panes);
+      return next === s.panes ? s : { ...s, panes: next };
     });
   }, []);
+
+  const update = useCallback(
+    (side: PaneSide, patch: Partial<PaneState>) => {
+      setPanes((current) => {
+        const next = { ...current[side], ...patch };
+        if (next.width === current[side].width && next.collapsed === current[side].collapsed) return current;
+        return { ...current, [side]: next };
+      });
+    },
+    [setPanes],
+  );
 
   return {
     panes,
     setWidth: useCallback((side, width) => update(side, { width: clampWidth(side, width), collapsed: false }), [update]),
     setCollapsed: useCallback((side, collapsed) => update(side, { collapsed }), [update]),
-    toggle: useCallback((side) => setPanes((c) => ({ ...c, [side]: { ...c[side], collapsed: !c[side].collapsed } })), []),
+    toggle: useCallback((side) => setPanes((c) => ({ ...c, [side]: { ...c[side], collapsed: !c[side].collapsed } })), [setPanes]),
     reset: useCallback((side) => update(side, { width: PANE_LIMITS[side].default, collapsed: false }), [update]),
   };
 }

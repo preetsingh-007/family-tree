@@ -43,6 +43,8 @@ interface Props {
   onApply: Apply;
   onDeleted: () => void;
   announce: (message: string) => void;
+  /** Shows the details without any editing controls. */
+  readOnly?: boolean;
 }
 
 function PersonLink({ person, onSelect, meta }: { person: Person; onSelect: (id: Id) => void; meta?: ReactNode }) {
@@ -57,7 +59,8 @@ function PersonLink({ person, onSelect, meta }: { person: Person; onSelect: (id:
   );
 }
 
-function EditLinkButton({ label, onClick }: { label: string; onClick: () => void }) {
+function EditLinkButton({ label, onClick, hidden }: { label: string; onClick: () => void; hidden: boolean }) {
+  if (hidden) return null;
   return (
     <button type="button" className="icon-button icon-button-small" aria-label={label} title={label} onClick={onClick}>
       <EditIcon />
@@ -93,7 +96,7 @@ function partnershipSummary(p: Partnership): string {
 }
 
 export function PersonDetails(props: Props) {
-  const { index, person, onSelect, onApply, announce } = props;
+  const { index, person, onSelect, onApply, announce, readOnly = false } = props;
   const headingId = useId();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [photoToRemove, setPhotoToRemove] = useState<Id>();
@@ -145,31 +148,39 @@ export function PersonDetails(props: Props) {
       </header>
 
       <div className="details-actions">
-        <button type="button" className="button button-primary" onClick={props.onEdit}>
-          <EditIcon /> Edit
-        </button>
-        <Menu
-          label={
-            <>
-              <PlusIcon /> Add relative
-            </>
-          }
-          items={(
-            [
-              ['parent', 'Parent'],
-              ['partner', 'Partner or spouse'],
-              ['child', 'Child'],
-              ['sibling', 'Sibling'],
-              ['other', 'Other relationship'],
-            ] as [RelationType, string][]
-          ).map(([relation, label]) => ({ label, onSelect: () => props.onAddRelative(relation) }))}
-        />
-        <button type="button" className="button" onClick={props.onShowInTree}>
-          <TargetIcon /> Show in tree
-        </button>
-        <button type="button" className="button button-danger-quiet" onClick={() => setConfirmDelete(true)}>
-          <TrashIcon /> Delete
-        </button>
+        {readOnly ? (
+          <button type="button" className="button" onClick={props.onShowInTree}>
+            <TargetIcon /> Show in tree
+          </button>
+        ) : (
+          <>
+            <button type="button" className="button button-primary" onClick={props.onEdit}>
+              <EditIcon /> Edit
+            </button>
+            <Menu
+              label={
+                <>
+                  <PlusIcon /> Add relative
+                </>
+              }
+              items={(
+                [
+                  ['parent', 'Parent'],
+                  ['partner', 'Partner or spouse'],
+                  ['child', 'Child'],
+                  ['sibling', 'Sibling'],
+                  ['other', 'Other relationship'],
+                ] as [RelationType, string][]
+              ).map(([relation, label]) => ({ label, onSelect: () => props.onAddRelative(relation) }))}
+            />
+            <button type="button" className="button" onClick={props.onShowInTree}>
+              <TargetIcon /> Show in tree
+            </button>
+            <button type="button" className="button button-danger-quiet" onClick={() => setConfirmDelete(true)}>
+              <TrashIcon /> Delete
+            </button>
+          </>
+        )}
       </div>
 
       <section className="details-section" aria-label="Facts">
@@ -198,7 +209,9 @@ export function PersonDetails(props: Props) {
         <dl className="relations">
           <dt>Parents</dt>
           <dd>
-            {parents.length === 0 ? (
+            {parents.length === 0 && readOnly ? (
+              <span className="muted">None recorded</span>
+            ) : parents.length === 0 ? (
               <button type="button" className="link-button" onClick={() => props.onAddRelative('parent')}>
                 Add a parent
               </button>
@@ -212,7 +225,7 @@ export function PersonDetails(props: Props) {
                       meta={
                         <>
                           {link.kind !== 'biological' && <span className="badge">{PARENT_KIND_LABELS[link.kind]}</span>}
-                          <EditLinkButton label={`Edit relationship with ${displayName(parent)}`} onClick={() => props.onEditParentLink(link)} />
+                          <EditLinkButton hidden={readOnly} label={`Edit relationship with ${displayName(parent)}`} onClick={() => props.onEditParentLink(link)} />
                         </>
                       }
                     />
@@ -255,6 +268,7 @@ export function PersonDetails(props: Props) {
                               <>
                                 <span className="muted small">{partnershipSummary(group.partnership)}</span>
                                 <EditLinkButton
+                                  hidden={readOnly}
                                   label={`Edit partnership with ${displayName(group.coParent)}`}
                                   onClick={() => props.onEditPartnership(group.partnership!)}
                                 />
@@ -278,7 +292,7 @@ export function PersonDetails(props: Props) {
                               meta={
                                 <>
                                   {link.kind !== 'biological' && <span className="badge">{PARENT_KIND_LABELS[link.kind]}</span>}
-                                  <EditLinkButton label={`Edit relationship with ${displayName(child)}`} onClick={() => props.onEditParentLink(link)} />
+                                  <EditLinkButton hidden={readOnly} label={`Edit relationship with ${displayName(child)}`} onClick={() => props.onEditParentLink(link)} />
                                 </>
                               }
                             />
@@ -324,14 +338,16 @@ export function PersonDetails(props: Props) {
                         meta={
                           <>
                             <span className="badge">{outgoing ? `${name} is their ${association.label}` : association.label}</span>
-                            <button
-                              type="button"
-                              className="icon-button icon-button-small"
-                              aria-label={`Remove relationship with ${displayName(other)}`}
-                              onClick={() => props.onRemoveAssociation(association)}
-                            >
-                              <TrashIcon />
-                            </button>
+                            {!readOnly && (
+                              <button
+                                type="button"
+                                className="icon-button icon-button-small"
+                                aria-label={`Remove relationship with ${displayName(other)}`}
+                                onClick={() => props.onRemoveAssociation(association)}
+                              >
+                                <TrashIcon />
+                              </button>
+                            )}
                           </>
                         }
                       />
@@ -376,72 +392,90 @@ export function PersonDetails(props: Props) {
         </section>
       )}
 
-      <section className="details-section">
-        <h3>Photos</h3>
-        {photos.length > 0 && (
-          <ul className="photo-grid">
-            {photos.map((m, i) => (
-              <li key={m.id} className="photo-card">
-                <img src={mediaDataUrl(m)} alt={m.caption || `Photo ${i + 1} of ${name}`} />
-                <label className="visually-hidden" htmlFor={`caption-${m.id}`}>
-                  Caption for photo {i + 1}
-                </label>
-                <input
-                  id={`caption-${m.id}`}
-                  className="input input-small"
-                  placeholder="Caption"
-                  defaultValue={m.caption ?? ''}
-                  onBlur={(e) => {
-                    const caption = e.target.value.trim();
-                    if (caption === (m.caption ?? '')) return;
-                    const updated = { ...m };
-                    if (caption) updated.caption = caption;
-                    else delete updated.caption;
-                    onApply('Edit photo caption', (tree) => updateMedia(tree, updated));
-                  }}
-                />
-                <div className="photo-actions">
-                  {i === 0 ? (
-                    <span className="badge">Portrait</span>
-                  ) : (
-                    <button type="button" className="link-button small" onClick={() => onApply('Set portrait', (tree) => setPortrait(tree, person.id, m.id))}>
-                      Use as portrait
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="icon-button icon-button-small"
-                    aria-label={`Remove photo ${i + 1}`}
-                    onClick={() => setPhotoToRemove(m.id)}
-                  >
-                    <TrashIcon />
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-        <label className="button button-small file-button">
-          <PhotoIcon /> {photoStatus.busy ? 'Adding photo…' : 'Add photo'}
-          <input
-            type="file"
-            accept="image/*"
-            className="visually-hidden"
-            disabled={photoStatus.busy}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = '';
-              if (file) void addPhoto(file);
-            }}
-          />
-        </label>
-        <p className="hint">Photos are resized, stripped of location and camera metadata, and encrypted inside your tree file.</p>
-        {photoStatus.error && (
-          <p className="form-error" role="alert">
-            {photoStatus.error}
-          </p>
-        )}
-      </section>
+      {readOnly ? (
+        photos.length > 0 && (
+          <section className="details-section">
+            <h3>Photos</h3>
+            <ul className="photo-grid">
+              {photos.map((m, i) => (
+                <li key={m.id} className="photo-card">
+                  <img src={mediaDataUrl(m)} alt={m.caption || `Photo ${i + 1} of ${name}`} />
+                  {m.caption && <p className="photo-caption">{m.caption}</p>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      ) : (
+        <>
+          <section className="details-section">
+            <h3>Photos</h3>
+            {photos.length > 0 && (
+              <ul className="photo-grid">
+                {photos.map((m, i) => (
+                  <li key={m.id} className="photo-card">
+                    <img src={mediaDataUrl(m)} alt={m.caption || `Photo ${i + 1} of ${name}`} />
+                    <label className="visually-hidden" htmlFor={`caption-${m.id}`}>
+                      Caption for photo {i + 1}
+                    </label>
+                    <input
+                      id={`caption-${m.id}`}
+                      className="input input-small"
+                      placeholder="Caption"
+                      defaultValue={m.caption ?? ''}
+                      onBlur={(e) => {
+                        const caption = e.target.value.trim();
+                        if (caption === (m.caption ?? '')) return;
+                        const updated = { ...m };
+                        if (caption) updated.caption = caption;
+                        else delete updated.caption;
+                        onApply('Edit photo caption', (tree) => updateMedia(tree, updated));
+                      }}
+                    />
+                    <div className="photo-actions">
+                      {i === 0 ? (
+                        <span className="badge">Portrait</span>
+                      ) : (
+                        <button type="button" className="link-button small" onClick={() => onApply('Set portrait', (tree) => setPortrait(tree, person.id, m.id))}>
+                          Use as portrait
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="icon-button icon-button-small"
+                        aria-label={`Remove photo ${i + 1}`}
+                        onClick={() => setPhotoToRemove(m.id)}
+                      >
+                        <TrashIcon />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <label className="button button-small file-button">
+              <PhotoIcon /> {photoStatus.busy ? 'Adding photo…' : 'Add photo'}
+              <input
+                type="file"
+                accept="image/*"
+                className="visually-hidden"
+                disabled={photoStatus.busy}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file) void addPhoto(file);
+                }}
+              />
+            </label>
+            <p className="hint">Photos are resized, stripped of location and camera metadata, and encrypted inside your tree file.</p>
+            {photoStatus.error && (
+              <p className="form-error" role="alert">
+                {photoStatus.error}
+              </p>
+            )}
+          </section>
+        </>
+      )}
 
       {confirmDelete && removal && (
         <ConfirmDialog

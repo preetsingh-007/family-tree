@@ -51,6 +51,8 @@ on GitHub Pages.
 - **Open an encrypted file.** Open a `.ftree` file you saved earlier.
 - **Open the published tree.** This appears only if the site publishes
   an encrypted tree (see [Publishing the family tree](#publishing-the-family-tree-to-the-website)).
+  It opens **view-only**, showing just the graph with the side panes collapsed; **Edit**
+  in the header turns on editing.
 - **Recover unsaved work.** This appears if the browser closed while you had unsaved
   changes.
 - **Import an unencrypted backup.** Open a `.plaintext.json` export and protect it
@@ -241,8 +243,10 @@ Details:
 - **Publishing counts as saving.** The unsaved-changes indicator clears, and the
   local recovery copy is deleted. You can still use **Save** for a local backup
   file.
-- **Viewers need no token and no account.** They need only the passphrase. They can
-  change their own copy in the browser, but cannot publish.
+- **Viewers need no token and no account.** They need only the passphrase. The tree
+  opens view-only. View-only is a convenience, not a protection: anyone with the
+  passphrase can press **Edit** and change their own copy in the browser, but
+  cannot publish without your token.
 - You can also publish by hand: save a `.ftree` file, copy it to
   `public/family-tree.ftree`, and commit it.
 

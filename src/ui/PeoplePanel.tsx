@@ -8,7 +8,8 @@ interface Props {
   people: readonly Person[];
   selectedId?: Id;
   onSelect: (id: Id) => void;
-  onAddPerson: () => void;
+  /** Omitted when the tree is view-only. */
+  onAddPerson?: () => void;
 }
 
 const PAGE = 200;
@@ -56,9 +57,11 @@ export function PeoplePanel({ people, selectedId, onSelect, onAddPerson }: Props
             }}
           />
         </div>
-        <button type="button" className="button button-primary add-person-button" onClick={onAddPerson}>
-          <PlusIcon /> Add person
-        </button>
+        {onAddPerson && (
+          <button type="button" className="button button-primary add-person-button" onClick={onAddPerson}>
+            <PlusIcon /> Add person
+          </button>
+        )}
       </div>
       <p id={statusId} className="people-count" role="status">
         {status}

@@ -26,6 +26,8 @@ export interface OpenedTree {
   fromDraft?: boolean;
   /** Git blob SHA of the encrypted file this tree was opened from, used to detect newer published versions. */
   baseSha?: string;
+  /** Opens for viewing, with editing one click away (used for the published tree). */
+  readOnly?: boolean;
 }
 
 interface Props {
@@ -316,7 +318,7 @@ export function WelcomeScreen({ onOpen: onOpenTree }: Props) {
             text={hosted}
             submitLabel="Unlock"
             onCancel={() => setActive('none')}
-            onUnlocked={({ tree, session, sha }) => onOpen({ tree, session, saved: true, baseSha: sha })}
+            onUnlocked={({ tree, session, sha }) => onOpen({ tree, session, saved: true, baseSha: sha, readOnly: true })}
           />
         </Card>
         {replaceDraftDialog}
@@ -384,7 +386,7 @@ export function WelcomeScreen({ onOpen: onOpenTree }: Props) {
               </button>
             }
           >
-            <p>View and edit the encrypted tree published with this website.</p>
+            <p>View the encrypted tree published with this website. It opens read-only; you can switch to editing.</p>
           </Card>
         )}
 

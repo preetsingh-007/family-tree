@@ -18,7 +18,7 @@ import { defaultTarget, getPublishedFile, PUBLISH_PATH, publishFile, type GitHub
 import { defaultFileName, ENCRYPTED_EXTENSION, encryptTree, serializeTree } from '../storage/treeFile';
 import { AddRelativeDialog, type RelationType } from './AddRelativeDialog';
 import { describeError } from './errors';
-import { LockIcon, MenuIcon, PeopleIcon, PersonIcon, RedoIcon, SaveIcon, TreeIcon, UndoIcon } from './icons';
+import { EditIcon, LockIcon, MenuIcon, PeopleIcon, PersonIcon, RedoIcon, SaveIcon, TreeIcon, UndoIcon } from './icons';
 import { Markdown } from './Markdown';
 import { Menu } from './Menu';
 import { ConfirmDialog } from './Modal';
@@ -59,6 +59,8 @@ interface Props {
 
 export function Workspace({ opened, onLock }: Props) {
   const editor = useTreeEditor(opened.tree, opened.saved);
+  // A published tree opens for viewing; "Edit" switches to the full editor.
+  const [readOnly, setReadOnly] = useState(!!opened.readOnly);
   const { tree, dirty } = editor;
   const index = useMemo(() => buildIndex(tree), [tree]);
 
@@ -83,7 +85,7 @@ export function Workspace({ opened, onLock }: Props) {
   const wide = useMediaQuery('(min-width: 1180px)');
   const narrow = useMediaQuery('(max-width: 759px)');
   const layout = wide ? 'wide' : narrow ? 'narrow' : 'medium';
-  const paneControls = usePanes();
+  const paneControls = usePanes(readOnly);
   const { panes } = paneControls;
   /** Makes sure the details pane is visible (it may have been collapsed). */
   const showDetails = useCallback(() => {
@@ -220,6 +222,7 @@ export function Workspace({ opened, onLock }: Props) {
 
   // Keyboard shortcuts.
   useEffect(() => {
+    if (readOnly) return;
     const onKeyDown = (event: KeyboardEvent) => {
       const mod = event.ctrlKey || event.metaKey;
       if (!mod) return;
@@ -239,7 +242,7 @@ export function Workspace({ opened, onLock }: Props) {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [save, editor]);
+  }, [save, editor, readOnly]);
 
   // "[" and "]" hide or show the side panes.
   useEffect(() => {
@@ -283,8 +286,9 @@ export function Workspace({ opened, onLock }: Props) {
   };
 
   // --- Rendering ---------------------------------------------------------------
-  const statusText =
-    saveState.status === 'encrypting'
+  const statusText = readOnly
+    ? 'View only'
+    : saveState.status === 'encrypting'
       ? 'Encrypting…'
       : saveState.status === 'error'
         ? 'Save failed'
@@ -331,14 +335,16 @@ export function Workspace({ opened, onLock }: Props) {
             <p className="muted">Select someone in the tree or the list to see their details.</p>
           )}
           {tree.notes.trim() && <Markdown source={tree.notes} className="tree-notes" />}
-          <div className="button-row">
-            <button type="button" className="button button-primary" onClick={startNewPerson}>
-              Add person
-            </button>
-            <button type="button" className="button" onClick={() => setDialog({ kind: 'treeSettings' })}>
-              Edit tree name &amp; notes
-            </button>
-          </div>
+          {!readOnly && (
+            <div className="button-row">
+              <button type="button" className="button button-primary" onClick={startNewPerson}>
+                Add person
+              </button>
+              <button type="button" className="button" onClick={() => setDialog({ kind: 'treeSettings' })}>
+                Edit tree name &amp; notes
+              </button>
+            </div>
+          )}
         </div>
       );
     }
@@ -374,6 +380,7 @@ export function Workspace({ opened, onLock }: Props) {
         onApply={editor.apply}
         onDeleted={() => setSelectedId(undefined)}
         announce={announce}
+        readOnly={readOnly}
       />
     );
   })();
@@ -386,7 +393,7 @@ export function Workspace({ opened, onLock }: Props) {
         select(id, { openDetails: true });
         if (!focusId) setFocusId(id);
       }}
-      onAddPerson={startNewPerson}
+      onAddPerson={readOnly ? undefined : startNewPerson}
     />
   );
 
@@ -530,70 +537,106 @@ export function Workspace({ opened, onLock }: Props) {
       </a>
       <header className="app-header">
         <div className="header-identity">
-          <button type="button" className="tree-title" onClick={() => setDialog({ kind: 'treeSettings' })} title="Edit tree name and notes">
-            <TreeIcon />
-            <span className="tree-title-text">{tree.title}</span>
-          </button>
-          <p className={`save-status ${dirty ? 'dirty' : 'clean'} ${saveState.status}`} role="status" aria-live="polite">
+          {readOnly ? (
+            <h1 className="tree-title">
+              <TreeIcon />
+              <span className="tree-title-text">{tree.title}</span>
+            </h1>
+          ) : (
+            <button type="button" className="tree-title" onClick={() => setDialog({ kind: 'treeSettings' })} title="Edit tree name and notes">
+              <TreeIcon />
+              <span className="tree-title-text">{tree.title}</span>
+            </button>
+          )}
+          <p className={`save-status ${readOnly ? 'view-only' : dirty ? 'dirty' : 'clean'} ${saveState.status}`} role="status" aria-live="polite">
             <span className="save-dot" aria-hidden="true" />
             <span className="save-status-text">{statusText}</span>
           </p>
         </div>
         <div className="header-actions">
-          <button
-            type="button"
-            className="icon-button"
-            onClick={editor.undo}
-            disabled={!editor.canUndo}
-            aria-label={editor.undoLabel ? `Undo: ${editor.undoLabel}` : 'Undo'}
-            title={editor.undoLabel ? `Undo: ${editor.undoLabel}` : 'Undo'}
-          >
-            <UndoIcon />
-          </button>
-          <button
-            type="button"
-            className="icon-button"
-            onClick={editor.redo}
-            disabled={!editor.canRedo}
-            aria-label={editor.redoLabel ? `Redo: ${editor.redoLabel}` : 'Redo'}
-            title={editor.redoLabel ? `Redo: ${editor.redoLabel}` : 'Redo'}
-          >
-            <RedoIcon />
-          </button>
-          <button
-            type="button"
-            className={`button ${dirty ? 'button-primary' : ''}`}
-            onClick={() => void save(false)}
-            disabled={saveState.status === 'encrypting'}
-            title="Encrypt and save (Ctrl+S)"
-          >
-            <SaveIcon /> {saveState.status === 'encrypting' ? 'Encrypting…' : 'Save'}
-          </button>
-          <Menu
-            label={<MenuIcon />}
-            ariaLabel="More actions"
-            buttonClassName="icon-button"
-            align="right"
-            items={[
-              { label: 'Save as…', description: 'Encrypted copy with a new file name', onSelect: () => void save(true) },
-              {
-                label: 'Publish to website…',
-                description: 'Commit the encrypted tree to GitHub',
-                onSelect: () => setDialog({ kind: 'publish' }),
-              },
-              { label: 'Tree name & notes', onSelect: () => setDialog({ kind: 'treeSettings' }) },
-              { label: 'Change passphrase', onSelect: () => setDialog({ kind: 'passphrase' }) },
-              'separator',
-              {
-                label: 'Export unencrypted JSON…',
-                description: 'Readable backup, not protected',
-                onSelect: () => setDialog({ kind: 'exportPlaintext' }),
-              },
-              { label: 'How your data is protected', onSelect: () => setDialog({ kind: 'security' }) },
-              'separator',
-              { label: 'Lock', onSelect: () => (dirty ? setDialog({ kind: 'lock' }) : onLock()) },
-            ]}
-          />
+          {readOnly ? (
+            <>
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={() => {
+                  setReadOnly(false);
+                  announce('Editing turned on.');
+                }}
+                title="Turn on editing"
+              >
+                <EditIcon /> Edit
+              </button>
+              <Menu
+                label={<MenuIcon />}
+                ariaLabel="More actions"
+                buttonClassName="icon-button"
+                align="right"
+                items={[
+                  { label: 'How your data is protected', onSelect: () => setDialog({ kind: 'security' }) },
+                  'separator',
+                  { label: 'Lock', onSelect: onLock },
+                ]}
+              />
+            </>
+          ) : (
+            <>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={editor.undo}
+              disabled={!editor.canUndo}
+              aria-label={editor.undoLabel ? `Undo: ${editor.undoLabel}` : 'Undo'}
+              title={editor.undoLabel ? `Undo: ${editor.undoLabel}` : 'Undo'}
+            >
+              <UndoIcon />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={editor.redo}
+              disabled={!editor.canRedo}
+              aria-label={editor.redoLabel ? `Redo: ${editor.redoLabel}` : 'Redo'}
+              title={editor.redoLabel ? `Redo: ${editor.redoLabel}` : 'Redo'}
+            >
+              <RedoIcon />
+            </button>
+            <button
+              type="button"
+              className={`button ${dirty ? 'button-primary' : ''}`}
+              onClick={() => void save(false)}
+              disabled={saveState.status === 'encrypting'}
+              title="Encrypt and save (Ctrl+S)"
+            >
+              <SaveIcon /> {saveState.status === 'encrypting' ? 'Encrypting…' : 'Save'}
+            </button>
+            <Menu
+              label={<MenuIcon />}
+              ariaLabel="More actions"
+              buttonClassName="icon-button"
+              align="right"
+              items={[
+                { label: 'Save as…', description: 'Encrypted copy with a new file name', onSelect: () => void save(true) },
+                {
+                  label: 'Publish to website…',
+                  description: 'Commit the encrypted tree to GitHub',
+                  onSelect: () => setDialog({ kind: 'publish' }),
+                },
+                { label: 'Tree name & notes', onSelect: () => setDialog({ kind: 'treeSettings' }) },
+                { label: 'Change passphrase', onSelect: () => setDialog({ kind: 'passphrase' }) },
+                'separator',
+                {
+                  label: 'Export unencrypted JSON…',
+                  description: 'Readable backup, not protected',
+                  onSelect: () => setDialog({ kind: 'exportPlaintext' }),
+                },
+                { label: 'How your data is protected', onSelect: () => setDialog({ kind: 'security' }) },
+                'separator',
+                { label: 'Lock', onSelect: () => (dirty ? setDialog({ kind: 'lock' }) : onLock()) },
+              ]}
+            />
+            </>
+          )}
           <button
             type="button"
             className="icon-button hide-narrow"
