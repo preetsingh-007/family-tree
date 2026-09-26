@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+*.log
+.DS_Store
+.vite/
+
+# Never commit decrypted family data. The application names plaintext
+# exports "*.plaintext.json"; encrypted files use the ".ftree" extension.
+*.plaintext.json
