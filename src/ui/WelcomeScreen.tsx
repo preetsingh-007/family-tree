@@ -4,6 +4,7 @@ import { createEmptyTree } from '../model/tree';
 import type { FamilyTreeDocument } from '../model/types';
 import { clearDraft, loadDraft, type Draft } from '../storage/drafts';
 import { PickerCancelledError, pickOpenFile, readFileText, supportsOpenPicker, type FileHandle } from '../storage/files';
+import { gitBlobSha } from '../storage/github';
 import { fetchHostedTree } from '../storage/hosted';
 import { detectFileKind, ENCRYPTED_EXTENSION, openEncryptedTree, parsePlaintextTree } from '../storage/treeFile';
 import { ErrorMessage } from './ErrorMessage';
@@ -23,6 +24,8 @@ export interface OpenedTree {
   fileName?: string;
   /** True when this is the recovered draft (so the workspace may replace or delete it). */
   fromDraft?: boolean;
+  /** Git blob SHA of the encrypted file this tree was opened from, used to detect newer published versions. */
+  baseSha?: string;
 }
 
 interface Props {
@@ -58,7 +61,7 @@ function UnlockForm({
 }: {
   text: string;
   submitLabel: string;
-  onUnlocked: (result: { tree: FamilyTreeDocument; session: SessionKey }) => void;
+  onUnlocked: (result: { tree: FamilyTreeDocument; session: SessionKey; sha: string }) => void;
   onCancel?: () => void;
   autoFocus?: boolean;
 }) {
@@ -76,8 +79,9 @@ function UnlockForm({
     setError(undefined);
     try {
       const result = await openEncryptedTree(text, passphrase);
+      const sha = await gitBlobSha(text);
       setPassphrase('');
-      onUnlocked(result);
+      onUnlocked({ ...result, sha });
     } catch (e) {
       setError(describeError(e, 'The file could not be opened.'));
       setBusy(false);
@@ -262,8 +266,8 @@ export function WelcomeScreen({ onOpen: onOpenTree }: Props) {
             text={pending.text}
             submitLabel="Unlock"
             onCancel={() => setPending(undefined)}
-            onUnlocked={({ tree, session }) =>
-              onOpen({ tree, session, saved: true, fileHandle: pending.handle, fileName: pending.fileName })
+            onUnlocked={({ tree, session, sha }) =>
+              onOpen({ tree, session, saved: true, fileHandle: pending.handle, fileName: pending.fileName, baseSha: sha })
             }
           />
         </Card>
@@ -340,7 +344,7 @@ export function WelcomeScreen({ onOpen: onOpenTree }: Props) {
                 text={hosted}
                 submitLabel="Unlock"
                 onCancel={() => setActive('none')}
-                onUnlocked={({ tree, session }) => onOpen({ tree, session, saved: true })}
+                onUnlocked={({ tree, session, sha }) => onOpen({ tree, session, saved: true, baseSha: sha })}
               />
             ) : (
               <button type="button" className="button button-primary" onClick={() => setActive('hosted')}>

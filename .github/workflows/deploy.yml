@@ -39,6 +39,10 @@ jobs:
       # (no source maps, no test data, no plaintext trees, CSP present).
       - name: Build static site
         run: npm run build
+        env:
+          # Not secret: tells "Publish to website" which repository and branch to commit to.
+          VITE_GITHUB_REPOSITORY: ${{ github.repository }}
+          VITE_GITHUB_BRANCH: ${{ github.event.repository.default_branch }}
 
       - name: Install Chromium for end-to-end tests
         run: npx playwright install --with-deps chromium

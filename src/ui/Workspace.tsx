@@ -14,6 +14,7 @@ import {
   writeFile,
   type FileHandle,
 } from '../storage/files';
+import { defaultTarget, getPublishedFile, PUBLISH_PATH, publishFile, type GitHubTarget } from '../storage/github';
 import { defaultFileName, ENCRYPTED_EXTENSION, encryptTree, serializeTree } from '../storage/treeFile';
 import { AddRelativeDialog, type RelationType } from './AddRelativeDialog';
 import { describeError } from './errors';
@@ -24,6 +25,7 @@ import { ConfirmDialog } from './Modal';
 import { PeoplePanel } from './PeoplePanel';
 import { PersonDetails } from './PersonDetails';
 import { PersonEditor } from './PersonEditor';
+import { PublishDialog, type PublishOutcome } from './PublishDialog';
 import { EditParentLinkDialog, EditPartnershipDialog, RemoveAssociationDialog } from './RelationshipDialogs';
 import { SecurityInfo } from './SecurityInfo';
 import { TreeView } from './TreeView';
@@ -43,7 +45,8 @@ type Dialog =
   | { kind: 'security' }
   | { kind: 'passphrase' }
   | { kind: 'exportPlaintext' }
-  | { kind: 'lock' };
+  | { kind: 'lock' }
+  | { kind: 'publish' };
 
 const DRAFT_DELAY_MS = 800;
 
@@ -60,7 +63,10 @@ export function Workspace({ opened, onLock }: Props) {
   const [session, setSession] = useState<SessionKey>(opened.session);
   const [fileHandle, setFileHandle] = useState<FileHandle | undefined>(opened.fileHandle);
   const [saveState, setSaveState] = useState<SaveState>({ status: 'idle' });
-  const [lastSavedAt, setLastSavedAt] = useState<Date>();
+  const [lastSaved, setLastSaved] = useState<{ at: Date; how: 'Saved' | 'Published' }>();
+  // Publishing: the token and target live in memory only, for this unlocked session.
+  const [github, setGithub] = useState<{ token: string; target: GitHubTarget }>();
+  const publishedSha = useRef<string | undefined>(opened.baseSha);
   const [draftStored, setDraftStored] = useState(false);
   const [selectedId, setSelectedId] = useState<Id | undefined>(() => opened.tree.people[0]?.id);
   const [focusId, setFocusId] = useState<Id | undefined>(() => opened.tree.people[0]?.id);
@@ -161,7 +167,7 @@ export function Workspace({ opened, onLock }: Props) {
           message = 'Encrypted file downloaded. Keep it somewhere safe.';
         }
         editor.markSaved(revision);
-        setLastSavedAt(new Date());
+        setLastSaved({ at: new Date(), how: 'Saved' });
         setSaveState({ status: 'idle' });
         announce(message);
       } catch (error) {
@@ -173,6 +179,27 @@ export function Workspace({ opened, onLock }: Props) {
       }
     },
     [saveState.status, editor, tree, session, fileHandle, announce],
+  );
+
+  /**
+   * Encrypts the tree and commits it to GitHub. Refuses (returns "conflict") when
+   * the published file is not the version this session opened or last published,
+   * unless the user chose to replace it.
+   */
+  const publish = useCallback(
+    async (target: GitHubTarget, token: string, replace: boolean): Promise<PublishOutcome> => {
+      const revision = editor.revision;
+      const remote = await getPublishedFile(target, token);
+      if (remote && remote.sha !== publishedSha.current && !replace) return { status: 'conflict' };
+      const content = await encryptTree(tree, session);
+      publishedSha.current = await publishFile(target, token, content, remote?.sha);
+      setGithub({ token, target });
+      editor.markSaved(revision);
+      setLastSaved({ at: new Date(), how: 'Published' });
+      announce('Encrypted tree published. The website updates when the deploy finishes.');
+      return { status: 'published', target };
+    },
+    [editor, tree, session, announce],
   );
 
   const exportPlaintext = () => {
@@ -234,8 +261,8 @@ export function Workspace({ opened, onLock }: Props) {
           ? draftStored
             ? 'Unsaved changes · encrypted recovery copy on this device'
             : 'Unsaved changes'
-          : lastSavedAt
-            ? `Saved ${lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+          : lastSaved
+            ? `${lastSaved.how} ${lastSaved.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
             : 'No unsaved changes';
 
   const personPanel = (() => {
@@ -432,6 +459,15 @@ export function Workspace({ opened, onLock }: Props) {
             </p>
           </ConfirmDialog>
         );
+      case 'publish':
+        return (
+          <PublishDialog
+            initialTarget={{ ...defaultTarget(), ...github?.target, path: PUBLISH_PATH }}
+            sessionToken={github?.token}
+            onPublish={publish}
+            onClose={close}
+          />
+        );
       case 'lock':
         return (
           <ConfirmDialog
@@ -508,6 +544,11 @@ export function Workspace({ opened, onLock }: Props) {
             align="right"
             items={[
               { label: 'Save as…', description: 'Encrypted copy with a new file name', onSelect: () => void save(true) },
+              {
+                label: 'Publish to website…',
+                description: 'Commit the encrypted tree to GitHub',
+                onSelect: () => setDialog({ kind: 'publish' }),
+              },
               { label: 'Tree name & notes', onSelect: () => setDialog({ kind: 'treeSettings' }) },
               { label: 'Change passphrase', onSelect: () => setDialog({ kind: 'passphrase' }) },
               'separator',

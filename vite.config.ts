@@ -7,8 +7,9 @@ import { VitePWA } from 'vite-plugin-pwa';
  * Content Security Policy for the production build.
  *
  * - Scripts only from this site; no inline scripts, no eval.
- * - connect-src 'self' lets the app fetch an optional published encrypted tree
- *   and nothing else, so no data can be sent to third parties.
+ * - connect-src allows only this site (the optional published encrypted tree)
+ *   and api.github.com, which "Publish to website" uses to commit the encrypted
+ *   file. No other third party can be contacted.
  * - Images may be data:/blob: URLs (decrypted photos), never remote.
  * (Not applied to the dev server, whose hot-reload client needs inline scripts.)
  */
@@ -18,7 +19,7 @@ const CSP = [
   "style-src 'self'",
   "img-src 'self' data: blob:",
   "font-src 'self'",
-  "connect-src 'self'",
+  "connect-src 'self' https://api.github.com",
   "worker-src 'self'",
   "manifest-src 'self'",
   "object-src 'none'",

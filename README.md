@@ -50,7 +50,7 @@ on GitHub Pages.
 - **Start a new family tree.** Choose a name and a passphrase.
 - **Open an encrypted file.** Open a `.ftree` file you saved earlier.
 - **Open the family tree on this site.** This appears only if the site publishes
-  an encrypted tree (see [Publishing an encrypted tree](#optional-publishing-an-encrypted-tree-with-the-site)).
+  an encrypted tree (see [Publishing the family tree](#publishing-the-family-tree-to-the-website)).
 - **Recover unsaved work.** This appears if the browser closed while you had unsaved
   changes.
 - **Import an unencrypted backup.** Open a `.plaintext.json` export and protect it
@@ -78,11 +78,12 @@ on GitHub Pages.
 - **Save** (Ctrl/⌘+S) encrypts the tree and writes the file. In Chromium-based
   browsers, the same file is overwritten on later saves. Other browsers download
   a new copy each time. The status next to the tree name shows *Unsaved changes*,
-  *Encrypting…*, *Saved 14:05*, or *Save failed*.
+  *Encrypting…*, *Saved 14:05*, *Published 14:05*, or *Save failed*.
 - **Undo/redo** (Ctrl/⌘+Z, Ctrl/⌘+Shift+Z) covers the last 100 changes, until
   you lock the tree.
-- The **⋯ menu** has *Save as…*, *Tree name & notes*, *Change passphrase*,
-  *Export unencrypted JSON…*, *How your data is protected*, and *Lock*.
+- The **⋯ menu** has *Save as…*, *Publish to website…*, *Tree name & notes*,
+  *Change passphrase*, *Export unencrypted JSON…*, *How your data is protected*,
+  and *Lock*.
 
 Destructive actions (deleting people, relationships, or photos; discarding edits;
 exporting without encryption; locking with unsaved changes) ask for confirmation.
@@ -169,24 +170,68 @@ actions are pinned to commit SHAs.
 > domain) or a dedicated account or organisation site (`<name>.github.io`) that
 > hosts nothing else.
 
-### Optional: publishing an encrypted tree with the site
+### Publishing the family tree to the website
 
-To let relatives open the tree by visiting the site and entering the passphrase:
+The whole family, including any unconnected branches, lives in **one encrypted
+file**: `public/family-tree.ftree` in this repository. Anyone who opens the website
+and knows the passphrase can view it with **Open the family tree on this site**.
+Only you, as the holder of a GitHub access token, can change it.
 
-1. Save the tree from the app. This gives you an encrypted `.ftree` file.
-2. Copy it to `public/family-tree.ftree` and commit it.
-3. Deploy. The start screen now offers **Open the family tree on this site**.
+**One-time setup: create an access token**
 
-Only the encrypted file is published. The application ignores a plaintext file at
-that path, and `npm run check:data` fails CI if `public/` contains anything
+1. Open GitHub → Settings → Developer settings → **Fine-grained personal access
+   tokens** → *Generate new token*
+   ([direct link](https://github.com/settings/personal-access-tokens/new)).
+2. Under **Repository access**, choose **Only select repositories** and pick this
+   repository.
+3. Under **Permissions → Repository permissions**, set **Contents** to **Read and
+   write**. Leave everything else at *No access*.
+4. Choose an expiry date and generate the token. Store it in your password manager.
+   Anyone with it can change the repository, so never share it.
+
+**Publishing**
+
+1. Open the tree: from the website, or from a saved file.
+2. Make your changes.
+3. Choose **⋯ → Publish to website…**. The repository and branch are filled in
+   automatically on the deployed site. Paste the token the first time in each
+   session.
+4. The app encrypts the tree in your browser and commits the encrypted file to the
+   repository through GitHub's API, with the generic message *Update encrypted
+   family tree*. That commit triggers the deploy workflow, and the website shows the
+   new version after a few minutes.
+
+Details:
+
+- **Nothing is overwritten by accident.** The app records which published version
+  you opened. If the repository holds a different version when you publish (from
+  another device, or because the site had not finished deploying), it asks before
+  replacing it. GitHub also refuses the commit if the file changes while you are
+  publishing. Replaced versions remain in the git history.
+- **The token is kept only in memory** for the unlocked session. It is sent only to
+  `api.github.com`, and it is forgotten when you lock the tree or close the tab.
+- **Publishing counts as saving.** The unsaved-changes indicator clears, and the
+  local recovery copy is deleted. You can still use **Save** for a local backup
+  file.
+- **Viewers need no token and no account.** They need only the passphrase. They can
+  change their own copy in the browser, but cannot publish.
+- You can also publish by hand: save a `.ftree` file, copy it to
+  `public/family-tree.ftree`, and commit it.
+
+Only the encrypted file is ever published. The application ignores a plaintext
+file at that path, and `npm run check:data` fails CI if `public/` contains anything
 unencrypted.
 
-Before you do this, remember that **anyone** can download a published file and
-try passphrases offline, and git history keeps every version you commit forever.
-Use a strong passphrase (see [Passphrases](#passphrases)), and read
-[Security limitations](#security-limitations). Changes made in the browser are
-not uploaded anywhere. To update the published tree, save a new file and commit it
-again.
+Remember that **anyone** can download a published file and try passphrases
+offline, and git history keeps every version forever. Use a strong passphrase
+(see [Passphrases](#passphrases)), and read
+[Security limitations](#security-limitations). To stop someone viewing future
+versions, change the passphrase and publish again. Old versions in the history can
+still be opened with the old passphrase.
+
+The deploy workflow passes the repository name and default branch to the build
+(`VITE_GITHUB_REPOSITORY`, `VITE_GITHUB_BRANCH`) so the publish dialog can fill
+them in. These values are not secret.
 
 ---
 
@@ -284,6 +329,7 @@ date. The tree's name is stored inside the encrypted document.
 | Action                       | Result |
 | ---------------------------- | ------ |
 | **Save / Save as…**          | Encrypted `.ftree` file (the normal format) |
+| **Publish to website…**      | Commits the encrypted file to the repository (see [Publishing](#publishing-the-family-tree-to-the-website)) |
 | **Open an encrypted file**   | Decrypts, validates, and opens a `.ftree` file |
 | **Export unencrypted JSON…** | Readable `.plaintext.json` document, after an explicit warning |
 | **Import an unencrypted backup** | Validates a plaintext document, then asks for a passphrase to protect it |
@@ -429,10 +475,11 @@ Development only: Vite, TypeScript, Vitest, Testing Library, jsdom,
 fake-indexeddb, Playwright, ESLint, and `vite-plugin-pwa` (which generates the
 Workbox service worker for offline use).
 
-The production Content Security Policy (`default-src 'self'`, `connect-src 'self'`,
-`img-src 'self' data: blob:`, no inline scripts or styles) stops the page from
-loading scripts or content from any other origin, and from sending data to one with
-`fetch`.
+The production Content Security Policy (`default-src 'self'`,
+`connect-src 'self' https://api.github.com`, `img-src 'self' data: blob:`, no inline
+scripts or styles) stops the page from loading scripts or content from any other
+origin. It also stops the page from sending data with `fetch` anywhere except this
+site and GitHub's API, which *Publish to website* uses to commit the encrypted file.
 
 ---
 

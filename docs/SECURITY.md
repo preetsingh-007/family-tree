@@ -76,10 +76,10 @@ build, and an independent adversarial review. The result for each requirement:
 | 12 | Sensitive data is not logged | ✅ No `console` calls in application code; ESLint `no-console` enforces this. Error messages never include raw exception text. |
 | 13 | Sensitive data is not placed in URLs | ✅ There is no routing, and nothing is written to the URL or history. The e2e test asserts the URL holds no names or passphrase. |
 | 14 | No development or test data in production | ✅ Fixtures live in `src/test/` and are never imported by application code. The build check scans for fixture names. |
-| 15 | Export and import do not bypass encryption | ✅ Saving always encrypts. Plaintext export needs an explicit warning dialog. Plaintext import forces a new passphrase before the tree opens. The published-tree loader ignores plaintext. |
+| 15 | Export and import do not bypass encryption | ✅ Saving and publishing always encrypt; only the encrypted container is committed to GitHub. Plaintext export needs an explicit warning dialog. Plaintext import forces a new passphrase before the tree opens. The published-tree loader ignores plaintext. |
 | 16 | Browser storage does not undermine security | ✅ Only encrypted drafts are stored in IndexedDB. There is no localStorage and no cookies. The service worker caches only the app shell, and never `.ftree` files. |
 | 17 | Dependencies introduce no obvious problems | ✅ Three runtime dependencies (react, markdown-it, zod), none of which make network requests. `npm audit` reports 0 vulnerabilities. There is no third-party crypto. |
-| 18 | GitHub Pages deployment needs no plaintext secrets | ✅ It uses only the built-in OIDC token for Pages. Actions are pinned to commit SHAs, and permissions are least-privilege. |
+| 18 | GitHub Pages deployment needs no plaintext secrets | ✅ It uses only the built-in OIDC token for Pages. Actions are pinned to commit SHAs, and permissions are least-privilege. The editor's publishing token is never part of the site: it is pasted in, kept in memory only, and sent only to `api.github.com`. |
 
 ### Findings addressed during review
 
@@ -99,6 +99,30 @@ build, and an independent adversarial review. The result for each requirement:
 - **Recovery script:** `scripts/decrypt.mjs` now validates parameters as strictly
   as the app does.
 - **Supply chain:** GitHub Actions are pinned to commit SHAs.
+
+## Publishing through the GitHub API
+
+*Publish to website* commits the encrypted tree to `public/family-tree.ftree`
+through GitHub's REST API.
+
+- **Token scope.** The recommended token is a fine-grained personal access token
+  limited to this one repository, with only *Contents: Read and write*. If it
+  leaked, someone could change or delete repository contents, including the
+  deployed code (see limitation 1), but could not read the tree without the
+  passphrase.
+- **Token handling.** The token is pasted in by the editor, held in React state for
+  the unlocked session, sent only in the `Authorization` header to
+  `api.github.com`, and discarded on Lock. It is never written to storage,
+  logged, placed in URLs, or included in error messages. Tests assert the error
+  messages.
+- **Network policy.** The CSP's `connect-src` allows only `'self'` and
+  `https://api.github.com`.
+- **Integrity.** Updates carry the SHA of the file being replaced, so concurrent
+  changes are refused rather than overwritten. Before publishing, the app compares
+  the published SHA with the version it opened, and asks before replacing a
+  different version.
+- **Commit metadata.** Commits use a fixed, generic message. The commit author,
+  time, and file size are visible to anyone who can see the repository.
 
 ## Remaining limitations
 

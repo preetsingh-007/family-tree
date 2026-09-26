@@ -126,3 +126,34 @@ test('keeps working offline once loaded', async ({ page, context }) => {
   await createTree(page);
   await context.setOffline(false);
 });
+
+test('publishes the encrypted tree to GitHub from the production build', async ({ page }) => {
+  const cspViolations = trackCspViolations(page);
+  let committed: { message: string; content: string; branch: string } | undefined;
+  await page.route('https://api.github.com/**', async (route) => {
+    const request = route.request();
+    const url = request.url();
+    if (request.method() === 'GET' && url.includes('/contents/')) return route.fulfill({ status: 404, body: '{}' });
+    if (request.method() === 'GET' && url.includes('/branches/')) return route.fulfill({ status: 200, body: '{"name":"main"}' });
+    if (request.method() === 'PUT') {
+      committed = request.postDataJSON();
+      return route.fulfill({ status: 201, contentType: 'application/json', body: '{"content":{"sha":"abc123"}}' });
+    }
+    return route.fulfill({ status: 500, body: '{}' });
+  });
+
+  await page.goto('./');
+  await createTree(page);
+  await page.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: /Publish to website/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Publish to website' });
+  await dialog.getByLabel('Repository').fill('someone/family-tree');
+  await dialog.getByLabel('GitHub access token', { exact: true }).fill('github_pat_TEST');
+  await dialog.getByRole('button', { name: 'Publish' }).click();
+  await expect(page.getByRole('dialog', { name: 'Published' })).toBeVisible({ timeout: 15_000 });
+
+  const text = Buffer.from(committed!.content, 'base64').toString('utf8');
+  expect(JSON.parse(text).format).toBe('family-tree-encrypted');
+  expect(text).not.toContain('E2E family');
+  expect(cspViolations).toEqual([]);
+});
