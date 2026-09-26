@@ -3,9 +3,10 @@ import { buildIndex } from '../model/relatives';
 import { addParentLink, addPartnership, addPerson, createEmptyTree } from '../model/tree';
 import type { FamilyTreeDocument } from '../model/types';
 import { complexFamily, person } from '../test/fixtures';
-import { layoutTree, NODE_WIDTH } from './treeLayout';
+import { layoutNetwork } from './networkLayout';
+import { NODE_WIDTH, type TreeLayout } from './types';
 
-function expectNoOverlaps(layout: ReturnType<typeof layoutTree>) {
+function expectNoOverlaps(layout: TreeLayout) {
   const rows = new Map<number, number[]>();
   for (const n of layout.nodes) rows.set(n.y, [...(rows.get(n.y) ?? []), n.x]);
   for (const xs of rows.values()) {
@@ -14,69 +15,57 @@ function expectNoOverlaps(layout: ReturnType<typeof layoutTree>) {
   }
 }
 
-describe('tree layout', () => {
+describe('network layout ("Everyone")', () => {
   it('handles an empty tree', () => {
-    const layout = layoutTree(buildIndex(createEmptyTree('T')), undefined, { radius: 3 });
-    expect(layout.nodes).toEqual([]);
+    expect(layoutNetwork(buildIndex(createEmptyTree('T')), undefined).nodes).toEqual([]);
   });
 
   it('places generations in rows and partners side by side', () => {
     const f = complexFamily();
-    const layout = layoutTree(buildIndex(f.tree), f.ed.id, { radius: Infinity });
+    const layout = layoutNetwork(buildIndex(f.tree), f.ed.id);
     const node = (id: string) => layout.nodes.find((n) => n.person.id === id)!;
 
     expect(layout.nodes).toHaveLength(f.tree.people.length);
     expect(node(f.arthur.id).y).toBeLessThan(node(f.ed.id).y);
     expect(node(f.ed.id).y).toBeLessThan(node(f.hana.id).y);
     expect(node(f.ed.id).y).toBe(node(f.gina.id).y);
-    expect(node(f.ed.id).y).toBe(node(f.dora.id).y);
     expect(Math.abs(node(f.ed.id).x - node(f.gina.id).x)).toBeLessThan(NODE_WIDTH * 1.5);
-    // The focus person is centred at the origin.
     expect(node(f.ed.id).x).toBe(0);
     expectNoOverlaps(layout);
   });
 
-  it('draws every partnership and parent–child line among visible people', () => {
+  it('links every partnership and every child to its parents', () => {
     const f = complexFamily();
-    const layout = layoutTree(buildIndex(f.tree), f.arthur.id, { radius: Infinity });
-    expect(layout.partnerEdges).toHaveLength(f.tree.partnerships.length);
-    // One line per child (children sharing parents share a bus).
-    const childrenWithParents = new Set(f.tree.parentLinks.map((l) => l.childId));
-    expect(layout.childEdges).toHaveLength(childrenWithParents.size);
-    // Adoption is drawn dashed; divorce drawn as ended.
-    expect(layout.childEdges.find((e) => e.key.endsWith(f.hana.id))!.dashed).toBe(true);
-    expect(layout.partnerEdges.find((e) => e.id === 'p-ab')!.ended).toBe(true);
+    const layout = layoutNetwork(buildIndex(f.tree), f.arthur.id);
+    expect(layout.partnerLinks).toHaveLength(f.tree.partnerships.length);
+    const childrenLinked = layout.familyLinks.flatMap((l) => l.children.map((c) => c.key));
+    expect(new Set(childrenLinked)).toEqual(new Set(f.tree.parentLinks.map((l) => l.childId)));
+    const hana = layout.familyLinks.find((l) => l.children.some((c) => c.key === f.hana.id))!;
+    expect(hana.children.find((c) => c.key === f.hana.id)!.dashed).toBe(true);
+    expect(layout.partnerLinks.find((l) => l.key === 'p-ab')!.ended).toBe(true);
   });
 
   it('places a person with several partners between them', () => {
     const f = complexFamily();
-    const layout = layoutTree(buildIndex(f.tree), f.arthur.id, { radius: Infinity });
+    const layout = layoutNetwork(buildIndex(f.tree), f.arthur.id);
     const x = (id: string) => layout.nodes.find((n) => n.person.id === id)!.x;
     const [left, right] = [x(f.beatrice.id), x(f.clara.id)].sort((a, b) => a - b);
     expect(x(f.arthur.id)).toBeGreaterThan(left!);
     expect(x(f.arthur.id)).toBeLessThan(right!);
   });
 
-  it('limits the view to nearby relatives and reports hidden ones', () => {
-    // A chain of eight generations.
-    let tree: FamilyTreeDocument = createEmptyTree('Chain');
-    const people = Array.from({ length: 8 }, (_, i) => person(`G${i}`, 'Chain'));
-    for (const p of people) tree = addPerson(tree, p);
-    for (let i = 1; i < people.length; i++) tree = addParentLink(tree, people[i - 1]!.id, people[i]!.id);
-    const layout = layoutTree(buildIndex(tree), people[4]!.id, { radius: 2 });
-    expect(layout.nodes.map((n) => n.person.givenNames).sort()).toEqual(['G2', 'G3', 'G4', 'G5', 'G6']);
-    expect(layout.hiddenRelatives.get(people[2]!.id)).toBe(1);
-    expect(layout.hiddenRelatives.has(people[4]!.id)).toBe(false);
-  });
-
-  it('shows disconnected people when showing everyone', () => {
+  it('shows disconnected people, and hides the descendants of collapsed people', () => {
     const f = complexFamily();
     const loner = person('Solo', 'Unlinked');
     const tree = addPerson(f.tree, loner);
-    expect(layoutTree(buildIndex(tree), f.arthur.id, { radius: 3 }).nodes.some((n) => n.person.id === loner.id)).toBe(false);
-    const all = layoutTree(buildIndex(tree), f.arthur.id, { radius: Infinity });
+    const all = layoutNetwork(buildIndex(tree), f.arthur.id);
     expect(all.nodes.some((n) => n.person.id === loner.id)).toBe(true);
     expectNoOverlaps(all);
+
+    const edAndGina = [f.ed.id, f.gina.id].sort().join('|');
+    const collapsed = layoutNetwork(buildIndex(tree), f.arthur.id, { collapsed: new Set([edAndGina]) });
+    expect(collapsed.nodes.some((n) => n.person.id === f.hana.id)).toBe(false);
+    expect(collapsed.collapsedFamilies).toMatchObject([{ key: edAndGina, hidden: 1 }]);
   });
 
   it('copes with large families and many partners without overlaps', () => {
@@ -96,9 +85,26 @@ describe('tree layout', () => {
       }
     }
     const start = performance.now();
-    const layout = layoutTree(buildIndex(tree), root.id, { radius: Infinity });
+    const layout = layoutNetwork(buildIndex(tree), root.id);
     expect(performance.now() - start).toBeLessThan(2000);
     expect(layout.nodes).toHaveLength(tree.people.length);
     expectNoOverlaps(layout);
+  });
+});
+
+describe('crossing count', () => {
+  it('counts crossing lines between rows', async () => {
+    const { countInversions } = await import('./networkLayout');
+    expect(countInversions([])).toBe(0);
+    expect(countInversions([[0, 0], [1, 1]])).toBe(0);
+    expect(countInversions([[0, 1], [1, 0]])).toBe(1);
+    // Lines from the same parent, or to the same child, never cross.
+    expect(countInversions([[0, 0], [0, 1], [1, 1]])).toBe(0);
+    expect(countInversions([[0, 2], [1, 1], [2, 0]])).toBe(3);
+    const random = Array.from({ length: 60 }, (_, i) => [i % 7, (i * 13) % 11] as [number, number]);
+    let brute = 0;
+    for (let i = 0; i < random.length; i++)
+      for (let j = i + 1; j < random.length; j++) if ((random[i]![0] - random[j]![0]) * (random[i]![1] - random[j]![1]) < 0) brute++;
+    expect(countInversions(random)).toBe(brute);
   });
 });

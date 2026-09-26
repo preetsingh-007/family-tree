@@ -37,7 +37,7 @@ describe('tree view', () => {
     expect(treeNode('Delta Test')).not.toBeNull();
   });
 
-  it('shows hidden relatives when their "+" is clicked', async () => {
+  it('shows hidden relatives in place when their "+" is clicked', async () => {
     const user = userEvent.setup();
     render(<App />);
     await createTree(user);
@@ -46,17 +46,69 @@ describe('tree view', () => {
     await addChildAndGoToIt(user, 'Charlie');
     await addRelative(user, 'Child', 'Delta', 'Test');
 
-    // Show only close family around Charlie: Alpha (two generations up) is then hidden behind Bravo's "+".
-    await user.click(within(personPanel()).getByRole('button', { name: 'Show in tree' }));
-    await user.selectOptions(screen.getByLabelText('How much of the family to show'), 'Close family');
+    // Show only close family around Delta: Alpha (three generations up) is hidden behind Bravo's "+".
     await user.click(within(personPanel()).getByRole('button', { name: /^Delta Test/ }));
     await user.click(screen.getByRole('button', { name: 'Show in tree' }));
+    await user.selectOptions(screen.getByLabelText('How much of the family to show'), 'Close family');
     expect(treeNode('Alpha Test')).toBeNull();
 
-    const plus = within(diagram()).getByRole('button', { name: 'Show 1 more relative of Bravo Test' });
-    await user.click(plus);
+    await user.click(within(diagram()).getByRole('button', { name: 'Show 1 more relative of Bravo Test' }));
+    // Alpha appears and nothing else disappears: the view grew instead of jumping.
     expect(treeNode('Alpha Test')).not.toBeNull();
-    // The tree is now centred on (and has selected) Bravo.
-    expect(await screen.findByRole('heading', { level: 2, name: 'Bravo Test' })).toBeInTheDocument();
+    expect(treeNode('Delta Test')).not.toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: 'Delta Test' })).toBeInTheDocument();
+
+    // "Reset view" undoes it.
+    await user.click(screen.getByRole('button', { name: /Reset view/ }));
+    expect(treeNode('Alpha Test')).toBeNull();
+  });
+
+  it('hides and shows a person’s descendants', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await createTree(user);
+    await addPersonViaForm(user, 'Alpha', 'Test');
+    await addChildAndGoToIt(user, 'Bravo');
+    await addRelative(user, 'Child', 'Charlie', 'Test');
+    await user.click(within(personPanel()).getByRole('button', { name: /^Charlie Test/ }));
+    await addRelative(user, 'Child', 'Delta', 'Test');
+    expect(treeNode('Delta Test')).not.toBeNull();
+
+    await user.click(within(diagram()).getByRole('button', { name: 'Hide descendants of Bravo Test' }));
+    expect(treeNode('Charlie Test')).toBeNull();
+    expect(treeNode('Delta Test')).toBeNull();
+    expect(treeNode('Bravo Test')).not.toBeNull();
+
+    await user.click(within(diagram()).getByRole('button', { name: 'Show 2 hidden descendants of Bravo Test' }));
+    expect(treeNode('Charlie Test')).not.toBeNull();
+    expect(treeNode('Delta Test')).not.toBeNull();
+  });
+
+  it('lets boxes be dragged, moving partners together, and resets the view', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await createTree(user);
+    await addPersonViaForm(user, 'Alpha', 'Test');
+    await addRelative(user, 'Partner or spouse', 'Beta', 'Test');
+    const position = (name: string) =>
+      diagram().querySelector(`[aria-label^="${name}"][data-node-key]`)!.getAttribute('transform');
+    const alphaBefore = position('Alpha Test');
+    const betaBefore = position('Beta Test');
+
+    const beta = diagram().querySelector('[aria-label^="Beta Test"][data-node-key]')!;
+    await user.pointer([
+      { keys: '[MouseLeft>]', target: beta, coords: { clientX: 100, clientY: 100 } },
+      { target: beta, coords: { clientX: 140, clientY: 160 } },
+      { keys: '[/MouseLeft]', target: beta, coords: { clientX: 140, clientY: 160 } },
+    ]);
+    // Partners move together.
+    expect(position('Alpha Test')).not.toBe(alphaBefore);
+    expect(position('Beta Test')).not.toBe(betaBefore);
+    // Dragging is not a click: Beta was not selected.
+    expect(screen.getByRole('heading', { level: 2, name: 'Alpha Test' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Reset view/ }));
+    expect(position('Alpha Test')).toBe(alphaBefore);
+    expect(position('Beta Test')).toBe(betaBefore);
   });
 });

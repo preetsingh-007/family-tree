@@ -62,17 +62,38 @@ on GitHub Pages.
   everyone. Search matches names, alternate names, places, years, custom fields,
   and notes, ignoring accents. Press Enter to jump to the first result. The list
   is also the accessible, non-graphical way to navigate the tree.
-- **Tree** (centre): a generational diagram. Drag to pan, use the mouse wheel or a
-  pinch to zoom, and use the toolbar to zoom, fit the tree to the screen, or
-  centre it on the selected person. Choose how much of the family to show, from
-  "Close family" up to "Everyone". A **+** badge means that person has relatives outside the current view.
-  Click it to re-centre the tree on them and show those relatives. When you
-  add someone who would fall outside the view, the tree re-centres on the person
-  you added them to. Dashed lines mark adoptive, step, foster, and guardian
-  relationships; a dotted line between partners means the relationship ended.
-  With the keyboard, arrow keys move between people (up to parents, down to
-  children, left and right within a generation), Enter opens a person's details,
-  and F centres the tree on the selected person.
+- **Tree** (centre): a generational diagram, with parents above and children
+  below. Drag the background to pan, use the mouse wheel or a pinch to zoom, and
+  use the toolbar to zoom, fit the tree to the screen, or centre it on the selected
+  person. Choose how much of the family to show:
+  - **"Close family" to "6 steps"** grow the tree outward from the centre person
+    and are **guaranteed free of crossing lines and overlapping boxes**. If a
+    relative cannot be placed without a crossing, they are left out and the
+    person they belong to gets a **+**. Someone who would close a loop, such as a
+    cousin marriage or two brothers marrying two sisters, appears a second time as
+    a dashed "shown elsewhere" box instead of a crossing line; clicking it goes to
+    their main box.
+  - **"Everyone"** draws every person once, with every line. It keeps crossings
+    to a minimum, but very tangled families can still have some.
+- **Tree controls:**
+  - **+** (top-right of a box): shows that person's hidden relatives in place,
+    without re-centring. If they cannot be shown here, the tree re-centres on that
+    person instead.
+  - **−** (on a family's line, below the parents): hides that family's children
+    and everyone below them. It becomes a **+N** badge that brings them back.
+  - **Dragging a box** moves it, together with any partner drawn beside it, and
+    its lines follow. On touch screens, press and hold a box before dragging.
+  - **Reset view** (↶ in the toolbar) undoes expanding, collapsing, and moving
+    boxes. These choices also reset when you re-centre the tree or change how much
+    of the family it shows.
+  - The selected person's lines are highlighted. When you add someone who would
+    fall outside the view, the tree brings them into view.
+  - Dashed lines mark adoptive, step, foster, and guardian relationships; a dotted
+    line between partners means the relationship ended.
+  - **Keyboard:** the arrow keys move between people (up to parents, down to
+    children, left and right within a generation). Enter opens a person's details,
+    F centres the tree on them, + shows their hidden relatives, and − hides or
+    shows their descendants.
 - **Person** (right, or the *Person* tab): details, family (parents, partners and
   the children of each partnership, siblings, step-parents, other relationships),
   life events, rendered Markdown notes, custom fields, and photos. From here you
@@ -434,7 +455,9 @@ src/
               search, validation (zod), and format migrations
   crypto/     Encrypted container format (Web Crypto: PBKDF2 + AES-GCM)
   storage/    File open/save, encrypted drafts (IndexedDB), published-tree fetch
-  layout/     Generational tree layout (pure, unit-tested)
+  layout/     Tree layouts (pure, unit-tested): the crossing-free focus layout,
+              the "Everyone" network layout, line routing, and an independent
+              geometric checker
   markdown/   Safe Markdown rendering
   media/      Photo resizing and metadata stripping
   passphrase/ Passphrase rules and random (Diceware) suggestions

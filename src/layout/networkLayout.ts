@@ -1,60 +1,64 @@
 /**
- * Layered ("generational") layout for the visual tree.
+ * Layered layout of the whole family network (the "Everyone" view).
  *
- * 1. Select the people within `radius` family steps of the focus person
- *    (parent/child = 1 step; partners are always shown together = 0 steps).
- * 2. Assign generations: parents one row above, children one row below,
- *    partners on the same row.
- * 3. Group partners into clusters (a person with several partners sits in the
+ * Unlike the focus view (focusLayout.ts), this draws every person exactly once
+ * with every line, so very tangled families can have crossings.
+ *
+ * 1. Assign generations: parents one row above, children one row below,
+ *    partners on the same row; unconnected groups are placed side by side.
+ * 2. Group partners into clusters (a person with several partners sits in the
  *    middle), order clusters with barycentre sweeps to reduce crossings.
- * 4. Assign x coordinates by repeatedly pulling clusters towards their parents
+ * 3. Assign x coordinates by repeatedly pulling clusters towards their parents
  *    and children while keeping a minimum gap (isotonic regression).
- * 5. Emit node positions and SVG paths for partnerships and parent → child lines.
- *
- * This is a pure function of the tree so it can be unit-tested without a DOM.
  */
 import type { TreeIndex } from '../model/relatives';
-import type { Id, ParentLinkKind, Partnership, Person } from '../model/types';
+import type { Id, Partnership } from '../model/types';
+import { buildFamilies } from './families';
+import { relativeCounts } from './counts';
+import {
+  boundsOf,
+  NODE_WIDTH,
+  ROW_HEIGHT,
+  type FamilyLink,
+  type LayoutNode,
+  type PartnerLink,
+  type TreeLayout,
+} from './types';
 
-export const NODE_WIDTH = 200;
-export const NODE_HEIGHT = 64;
 const PARTNER_GAP = 36;
 const CLUSTER_GAP = 40;
-const ROW_HEIGHT = 150;
 const COMPONENT_GAP = 120;
+const TRANSPOSE_LIMIT = 400;
 
-export interface LayoutOptions {
-  /** Family steps from the focus person; Infinity shows everyone. */
-  radius: number;
-}
-
-export interface LayoutNode {
-  person: Person;
-  x: number;
-  y: number;
-  generation: number;
-}
-
-export interface LayoutPartnerEdge {
-  id: Id;
-  path: string;
-  ended: boolean;
-}
-
-export interface LayoutChildEdge {
-  key: string;
-  path: string;
-  /** Adoptive, step, foster, or guardian relationships are drawn dashed. */
-  dashed: boolean;
-}
-
-export interface TreeLayout {
-  nodes: LayoutNode[];
-  partnerEdges: LayoutPartnerEdge[];
-  childEdges: LayoutChildEdge[];
-  bounds: { minX: number; minY: number; maxX: number; maxY: number };
-  /** People outside the radius who are directly related to someone shown. */
-  hiddenRelatives: Map<Id, number>;
+/** Number of crossing pairs among straight lines between two rows (inversions), in O(n log n). */
+export function countInversions(edges: [number, number][]): number {
+  const sorted = [...edges].sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+  const values = [...new Set(sorted.map((e) => e[1]))].sort((a, b) => a - b);
+  const rank = new Map(values.map((v, i) => [v, i + 1]));
+  const tree = new Array<number>(values.length + 1).fill(0);
+  let inversions = 0;
+  let seen = 0;
+  // Lines sharing a start point do not cross each other.
+  let groupStart = 0;
+  const pending: number[] = [];
+  const flush = () => {
+    for (const r of pending) for (let i = r; i < tree.length; i += i & -i) tree[i]!++;
+    seen += pending.length;
+    pending.length = 0;
+  };
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i]![0] !== sorted[groupStart]![0]) {
+      flush();
+      groupStart = i;
+    }
+    const r = rank.get(sorted[i]![1])!;
+    // Earlier lines ending strictly to the right of this one cross it.
+    let notGreater = 0;
+    for (let j = r; j > 0; j -= j & -j) notGreater += tree[j]!;
+    inversions += seen - notGreater;
+    pending.push(r);
+  }
+  return inversions;
 }
 
 interface Neighbour {
@@ -72,19 +76,19 @@ function neighbours(index: TreeIndex, id: Id): Neighbour[] {
   return result;
 }
 
-/** 0-1 BFS: partner edges cost 0, parent/child edges cost 1. */
-function selectPeople(index: TreeIndex, focusId: Id, radius: number): Map<Id, number> {
-  const generation = new Map<Id, number>([[focusId, 0]]);
-  const distance = new Map<Id, number>([[focusId, 0]]);
-  const deque: Id[] = [focusId];
+/** Everyone connected to `startId`, with their generation; children of collapsed families are left out. */
+function selectPeople(index: TreeIndex, startId: Id, isHidden: (child: Id) => boolean): Map<Id, number> {
+  const generation = new Map<Id, number>([[startId, 0]]);
+  const distance = new Map<Id, number>([[startId, 0]]);
+  const deque: Id[] = [startId];
   while (deque.length) {
     const id = deque.shift()!;
     const d = distance.get(id)!;
     for (const n of neighbours(index, id)) {
       if (!index.people.has(n.id)) continue;
+      if (n.delta === 1 && isHidden(n.id)) continue;
       const cost = n.delta === 0 ? 0 : 1;
       const nd = d + cost;
-      if (nd > radius) continue;
       const known = distance.get(n.id);
       if (known !== undefined && known <= nd) continue;
       distance.set(n.id, nd);
@@ -197,21 +201,29 @@ function placeRow(row: Cluster[], desired: number[]): void {
   }
 }
 
-export function layoutTree(index: TreeIndex, focusId: Id | undefined, options: LayoutOptions): TreeLayout {
+export function layoutNetwork(
+  index: TreeIndex,
+  focusId: Id | undefined,
+  options: { collapsed?: ReadonlySet<string> } = {},
+): TreeLayout {
+  const collapsed = options.collapsed ?? new Set<string>();
+  const families = buildFamilies(index);
+  const hiddenChild = (child: Id) => collapsed.has(families.childFamily.get(child) ?? '');
   const empty: TreeLayout = {
     nodes: [],
-    partnerEdges: [],
-    childEdges: [],
+    partnerLinks: [],
+    familyLinks: [],
     bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
     hiddenRelatives: new Map(),
+    collapsedFamilies: [],
   };
   if (index.people.size === 0) return empty;
 
   // --- 1 & 2: selection and generations -----------------------------------
   const generation = new Map<Id, number>();
   const components: Id[][] = [];
-  const addComponent = (startId: Id, radius: number) => {
-    const selected = selectPeople(index, startId, radius);
+  const addComponent = (startId: Id) => {
+    const selected = selectPeople(index, startId, hiddenChild);
     const ids: Id[] = [];
     for (const [id, gen] of selected) {
       if (!generation.has(id)) {
@@ -223,10 +235,19 @@ export function layoutTree(index: TreeIndex, focusId: Id | undefined, options: L
   };
 
   const start = focusId && index.people.has(focusId) ? focusId : index.tree.people[0]!.id;
-  addComponent(start, options.radius);
-  if (!Number.isFinite(options.radius)) {
-    for (const p of index.tree.people) if (!generation.has(p.id)) addComponent(p.id, Infinity);
+  addComponent(start);
+  // Descendants of collapsed families stay hidden even though they are "connected".
+  const hiddenByCollapse = new Set<Id>();
+  for (const key of collapsed) {
+    const stack = [...(families.families.get(key)?.children ?? [])];
+    while (stack.length) {
+      const c = stack.pop()!;
+      if (hiddenByCollapse.has(c) || generation.has(c)) continue;
+      hiddenByCollapse.add(c);
+      stack.push(...(index.linksByParent.get(c) ?? []).map((l) => l.childId));
+    }
   }
+  for (const p of index.tree.people) if (!generation.has(p.id) && !hiddenByCollapse.has(p.id)) addComponent(p.id);
 
   // --- 3: clusters and ordering, per component --------------------------------
   const clusterOf = new Map<Id, Cluster>();
@@ -275,22 +296,114 @@ export function layoutTree(index: TreeIndex, focusId: Id | undefined, options: L
     for (const g of gens) packRow(componentRows.get(g)!);
 
     const positionMap = () => new Map(clusters.map((c) => [c, c.x] as const));
-    // Barycentre ordering sweeps.
-    for (let iteration = 0; iteration < 4; iteration++) {
-      const sweep = iteration % 2 === 0 ? gens : [...gens].reverse();
+
+    /** A couple from two families: each partner goes on the side of their own parents. */
+    const orientCouples = () => {
+      const positions = positionMap();
+      for (const c of clusters) {
+        if (c.members.length !== 2) continue;
+        const [a, b] = c.members as [Id, Id];
+        const ax = parentXs({ ...c, members: [a] }, positions);
+        const bx = parentXs({ ...c, members: [b] }, positions);
+        if (ax.length && bx.length && mean(ax) > mean(bx)) {
+          const oa = c.offsets.get(a)!;
+          c.offsets.set(a, c.offsets.get(b)!);
+          c.offsets.set(b, oa);
+          c.members = [b, a];
+        }
+      }
+    };
+
+    /** Number of crossing parent–child lines, the quantity the ordering tries to minimise. */
+    const crossings = () => {
+      const positions = positionMap();
+      const at = (id: Id) => {
+        const c = clusterOf.get(id)!;
+        return positions.get(c)! + c.offsets.get(id)!;
+      };
+      let total = 0;
+      for (const g of gens) {
+        const edges: [number, number][] = [];
+        for (const c of componentRows.get(g)!) {
+          for (const m of c.members) {
+            for (const l of index.linksByParent.get(m) ?? []) {
+              const child = clusterOf.get(l.childId);
+              if (child && child.generation === g + 1 && ids.includes(l.childId)) edges.push([at(m), at(l.childId)]);
+            }
+          }
+        }
+        total += countInversions(edges);
+      }
+      return total;
+    };
+
+    /** Swaps neighbouring clusters wherever that reduces crossings (a standard refinement step). */
+    const transpose = () => {
+      // Quadratic in the number of clusters, so only used for moderately sized families.
+      if (clusters.length > TRANSPOSE_LIMIT) return;
+      let current = crossings();
+      for (let pass = 0; pass < 3; pass++) {
+        let improved = false;
+        for (const g of gens) {
+          const row = componentRows.get(g)!;
+          for (let i = 0; i + 1 < row.length; i++) {
+            [row[i], row[i + 1]] = [row[i + 1]!, row[i]!];
+            packRow(row);
+            const count = crossings();
+            if (count < current) {
+              current = count;
+              improved = true;
+            } else {
+              [row[i], row[i + 1]] = [row[i + 1]!, row[i]!];
+              packRow(row);
+            }
+          }
+        }
+        if (!improved) break;
+      }
+    };
+
+    // Barycentre ordering sweeps (down, up, …, ending with a downward sweep so
+    // siblings stay grouped under their parents), keeping the best ordering seen.
+    let best = { crossings: Infinity, order: new Map<number, Cluster[]>(), offsets: new Map<Cluster, Map<Id, number>>() };
+    const remember = () => {
+      const count = crossings();
+      if (count < best.crossings) {
+        best = {
+          crossings: count,
+          order: new Map([...componentRows].map(([g, row]) => [g, [...row]])),
+          offsets: new Map(clusters.map((c) => [c, new Map(c.offsets)])),
+        };
+      }
+    };
+    orientCouples();
+    remember();
+    for (let iteration = 0; iteration < 7; iteration++) {
+      const down = iteration % 2 === 0;
+      const sweep = down ? gens : [...gens].reverse();
       for (const g of sweep) {
         const row = componentRows.get(g)!;
         const positions = positionMap();
         const key = new Map(
           row.map((c) => {
-            const xs = iteration % 2 === 0 ? parentXs(c, positions) : childXs(c, positions);
+            const xs = down ? parentXs(c, positions) : childXs(c, positions);
             return [c, xs.length ? mean(xs) : c.x] as const;
           }),
         );
         row.sort((a, b) => key.get(a)! - key.get(b)!);
         packRow(row);
       }
+      orientCouples();
+      for (const g of gens) packRow(componentRows.get(g)!);
+      transpose();
+      remember();
     }
+    for (const [g, row] of best.order) componentRows.set(g, row);
+    for (const [c, offsets] of best.offsets) {
+      c.offsets = offsets;
+      c.members = [...offsets.keys()].sort((a, b) => offsets.get(a)! - offsets.get(b)!);
+    }
+    for (const g of gens) packRow(componentRows.get(g)!);
 
     // --- 4: coordinate assignment ---------------------------------------------
     const desiredFor = (c: Cluster, useParents: boolean, useChildren: boolean, positions: Map<Cluster, number>) => {
@@ -340,98 +453,54 @@ export function layoutTree(index: TreeIndex, focusId: Id | undefined, options: L
       const x = c.x + c.offsets.get(m)! - focusX;
       const y = c.generation * ROW_HEIGHT;
       pos.set(m, { x, y });
-      nodes.push({ person: index.people.get(m)!, x, y, generation: c.generation });
+      nodes.push({ key: m, person: index.people.get(m)!, x, y, generation: c.generation });
     }
   }
 
-  // --- 5: edges ---------------------------------------------------------------
-  const partnerEdges: LayoutPartnerEdge[] = [];
-  const drawnPartnerships = new Set<Id>();
+  // --- 5: links (drawn by routing.ts) ----------------------------------------------
+  const rowOrder = new Map<number, Id[]>();
+  for (const n of [...nodes].sort((a, b) => a.x - b.x)) {
+    const list = rowOrder.get(n.generation) ?? [];
+    list.push(n.person.id);
+    rowOrder.set(n.generation, list);
+  }
+  const sideBySide = (a: Id, b: Id) => {
+    const ga = generation.get(a);
+    if (ga === undefined || ga !== generation.get(b)) return false;
+    const row = rowOrder.get(ga)!;
+    return Math.abs(row.indexOf(a) - row.indexOf(b)) === 1;
+  };
+
+  const partnerLinks: PartnerLink[] = [];
   for (const p of index.tree.partnerships) {
-    const a = pos.get(p.partnerIds[0]);
-    const b = pos.get(p.partnerIds[1]);
-    if (!a || !b || drawnPartnerships.has(p.id)) continue;
-    drawnPartnerships.add(p.id);
-    partnerEdges.push({ id: p.id, path: partnerPath(a, b), ended: isEnded(p) });
+    if (!pos.has(p.partnerIds[0]) || !pos.has(p.partnerIds[1])) continue;
+    partnerLinks.push({ key: p.id, a: p.partnerIds[0], b: p.partnerIds[1], ended: isEnded(p), adjacent: sideBySide(...p.partnerIds) });
   }
 
-  const childEdges: LayoutChildEdge[] = [];
-  const groups = new Map<string, { parents: Id[]; children: { id: Id; kinds: ParentLinkKind[] }[] }>();
-  for (const node of nodes) {
-    const links = (index.linksByChild.get(node.person.id) ?? []).filter((l) => pos.has(l.parentId));
-    if (!links.length) continue;
-    const parents = links.map((l) => l.parentId).sort();
-    const key = parents.join('|');
-    let group = groups.get(key);
-    if (!group) {
-      group = { parents, children: [] };
-      groups.set(key, group);
-    }
-    group.children.push({ id: node.person.id, kinds: links.map((l) => l.kind) });
-  }
-  const busCountPerRow = new Map<number, number>();
-  for (const [key, group] of groups) {
-    const parentPos = group.parents.map((id) => pos.get(id)!);
-    const anchorX = parentPos.reduce((s, p) => s + p.x, 0) / parentPos.length;
-    const lowestParentY = Math.max(...parentPos.map((p) => p.y));
-    const adjacentCouple =
-      parentPos.length === 2 && parentPos[0]!.y === parentPos[1]!.y && Math.abs(parentPos[0]!.x - parentPos[1]!.x) <= NODE_WIDTH + PARTNER_GAP + 1;
-    const anchorY = adjacentCouple ? lowestParentY : lowestParentY + NODE_HEIGHT / 2;
-    for (const child of group.children) {
-      const c = pos.get(child.id)!;
-      const dashed = child.kinds.some((k) => k !== 'biological' && k !== 'unknown');
-      const childTop = c.y - NODE_HEIGHT / 2;
-      let path: string;
-      if (childTop > anchorY) {
-        const row = Math.round(c.y / ROW_HEIGHT);
-        const slotKey = row * 1000 + Math.round(anchorX);
-        if (!busCountPerRow.has(slotKey)) busCountPerRow.set(slotKey, busCountPerRow.size % 3);
-        const busY = childTop - 22 - busCountPerRow.get(slotKey)! * 6;
-        path = `M${anchorX},${anchorY}V${busY}H${c.x}V${childTop}`;
-      } else {
-        path = `M${anchorX},${anchorY}L${c.x},${childTop}`;
-      }
-      childEdges.push({ key: `${key}>${child.id}`, path, dashed });
-    }
+  const familyLinks: FamilyLink[] = [];
+  for (const family of families.families.values()) {
+    const parents = family.parents.filter((id) => pos.has(id));
+    const children = family.children.filter((id) => pos.has(id));
+    if (!parents.length || !children.length) continue;
+    const joined = parents.length > 1 && parents.every((p, i) => i === 0 || sideBySide(parents[i - 1]!, p));
+    familyLinks.push({
+      key: family.key,
+      parents,
+      children: children.map((id) => ({ key: id, dashed: family.dashed.get(id) ?? false })),
+      joined,
+    });
   }
 
-  // Relatives not shown, so the UI can indicate that the tree continues.
-  const hiddenRelatives = new Map<Id, number>();
-  for (const id of pos.keys()) {
-    const hidden = neighbours(index, id).filter((n) => !pos.has(n.id)).length;
-    if (hidden) hiddenRelatives.set(id, hidden);
-  }
-
-  const xs = nodes.map((n) => n.x);
-  const ys = nodes.map((n) => n.y);
+  const drawn = new Set(pos.keys());
   return {
     nodes,
-    partnerEdges,
-    childEdges,
-    hiddenRelatives,
-    bounds: {
-      minX: Math.min(...xs) - NODE_WIDTH / 2,
-      maxX: Math.max(...xs) + NODE_WIDTH / 2,
-      minY: Math.min(...ys) - NODE_HEIGHT / 2 - 30,
-      maxY: Math.max(...ys) + NODE_HEIGHT / 2,
-    },
+    partnerLinks,
+    familyLinks,
+    bounds: boundsOf(nodes),
+    ...relativeCounts(index, families, drawn, new Set(), collapsed, nodes),
   };
 }
 
 function isEnded(p: Partnership): boolean {
   return !!p.end && (p.end.reason !== undefined || !!p.end.date);
-}
-
-function partnerPath(a: { x: number; y: number }, b: { x: number; y: number }): string {
-  const [left, right] = a.x <= b.x ? [a, b] : [b, a];
-  if (left.y === right.y && right.x - left.x <= NODE_WIDTH + PARTNER_GAP + 1) {
-    return `M${left.x + NODE_WIDTH / 2},${left.y}H${right.x - NODE_WIDTH / 2}`;
-  }
-  if (left.y === right.y) {
-    // Not adjacent: arc above the row so the line does not pass through other people.
-    const top = left.y - NODE_HEIGHT / 2;
-    const lift = Math.min(60, 20 + (right.x - left.x) / 20);
-    return `M${left.x},${top}C${left.x},${top - lift} ${right.x},${top - lift} ${right.x},${top}`;
-  }
-  return `M${left.x},${left.y}L${right.x},${right.y}`;
 }
