@@ -65,8 +65,10 @@ on GitHub Pages.
 - **Tree** (centre): a generational diagram. Drag to pan, use the mouse wheel or a
   pinch to zoom, and use the toolbar to zoom, fit the tree to the screen, or
   centre it on the selected person. Choose how much of the family to show, from
-  "Close family" up to "Everyone". A **+** badge means that person has relatives
-  outside the current view. Dashed lines mark adoptive, step, foster, and guardian
+  "Close family" up to "Everyone". A **+** badge means that person has relatives outside the current view.
+  Click it to re-centre the tree on them and show those relatives. When you
+  add someone who would fall outside the view, the tree re-centres on the person
+  you added them to. Dashed lines mark adoptive, step, foster, and guardian
   relationships; a dotted line between partners means the relationship ended.
   With the keyboard, arrow keys move between people (up to parents, down to
   children, left and right within a generation), Enter opens a person's details,

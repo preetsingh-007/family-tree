@@ -28,7 +28,7 @@ import { PersonEditor } from './PersonEditor';
 import { PublishDialog, type PublishOutcome } from './PublishDialog';
 import { EditParentLinkDialog, EditPartnershipDialog, RemoveAssociationDialog } from './RelationshipDialogs';
 import { SecurityInfo } from './SecurityInfo';
-import { TreeView } from './TreeView';
+import { TreeView, type RevealRequest } from './TreeView';
 import { useMediaQuery } from './useMediaQuery';
 import type { OpenedTree } from './WelcomeScreen';
 import { ChangePassphraseDialog, TreeSettingsDialog } from './WorkspaceDialogs';
@@ -71,6 +71,9 @@ export function Workspace({ opened, onLock }: Props) {
   const [selectedId, setSelectedId] = useState<Id | undefined>(() => opened.tree.people[0]?.id);
   const [focusId, setFocusId] = useState<Id | undefined>(() => opened.tree.people[0]?.id);
   const [panel, setPanel] = useState<Panel>({ mode: 'view' });
+  // Asks the tree view to bring someone just added into view.
+  const [reveal, setReveal] = useState<RevealRequest>();
+  const revealPerson = useCallback((id: Id, fallbackFocus: Id) => setReveal({ id, fallbackFocus, token: Date.now() }), []);
   const [dialog, setDialog] = useState<Dialog>();
   const [mobileTab, setMobileTab] = useState<MobileTab>(opened.tree.people.length ? 'tree' : 'people');
   const [announcement, setAnnouncement] = useState('');
@@ -278,6 +281,7 @@ export function Workspace({ opened, onLock }: Props) {
             if (!error) {
               setSelectedId(person.id);
               if (!focusId || tree.people.length === 0) setFocusId(person.id);
+              revealPerson(person.id, person.id);
               setPanel({ mode: 'view' });
               announce(`${displayName(person)} added.`);
             }
@@ -368,6 +372,7 @@ export function Workspace({ opened, onLock }: Props) {
         select(id);
         if (layout !== 'wide') setMobileTab('person');
       }}
+      reveal={reveal}
       onFocus={(id) => {
         setFocusId(id);
         setSelectedId(id);
@@ -387,8 +392,10 @@ export function Workspace({ opened, onLock }: Props) {
             relation={dialog.relation}
             onApply={editor.apply}
             onClose={close}
-            onDone={() => {
+            onDone={(relativeId) => {
               close();
+              // Other relationships (e.g. godparents) are not drawn in the tree, so there is nothing to reveal.
+              if (dialog.relation !== 'other') revealPerson(relativeId, selected.id);
               announce('Relationship added.');
             }}
           />

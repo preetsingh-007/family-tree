@@ -30,7 +30,8 @@ interface Props {
   person: Person;
   relation: RelationType;
   onApply: (label: string, change: (tree: FamilyTreeDocument) => FamilyTreeDocument) => string | undefined;
-  onDone: () => void;
+  /** Called with the id of the person who was connected. */
+  onDone: (relativeId: Id) => void;
   onClose: () => void;
 }
 
@@ -109,7 +110,7 @@ export function AddRelativeDialog({ index, person, relation, onApply, onDone, on
       return next;
     });
     if (result) setError(result);
-    else onDone();
+    else onDone(relativeId);
   };
 
   return (

@@ -15,6 +15,18 @@ interface Props {
   onSelect: (id: Id) => void;
   onOpen: (id: Id) => void;
   onFocus: (id: Id) => void;
+  /**
+   * A person to bring into view, e.g. someone just added. If they are outside
+   * the drawn part of the tree, the tree is re-centred on `fallbackFocus` once.
+   * A new `token` starts a new request.
+   */
+  reveal?: RevealRequest;
+}
+
+export interface RevealRequest {
+  id: Id;
+  fallbackFocus: Id;
+  token: number;
 }
 
 interface View {
@@ -35,7 +47,11 @@ const RADIUS_OPTIONS: { value: number; label: string }[] = [
 
 const clampZoom = (k: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, k));
 
-export function TreeView({ index, focusId, selectedId, onSelect, onOpen, onFocus }: Props) {
+function relativesLabel(count: number): string {
+  return `${count} more ${count === 1 ? 'relative' : 'relatives'}`;
+}
+
+export function TreeView({ index, focusId, selectedId, onSelect, onOpen, onFocus, reveal }: Props) {
   const instructionsId = useId();
   const clipId = `clip${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -93,16 +109,50 @@ export function TreeView({ index, focusId, selectedId, onSelect, onOpen, onFocus
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId, radius, size.width, size.height]);
 
+  /** Pans (keeping the zoom) so the node is on screen, if it is not already. */
+  const ensureVisible = useCallback(
+    (node: LayoutNode) => {
+      setView((v) => {
+        const sx = node.x * v.k + v.x;
+        const sy = node.y * v.k + v.y;
+        // The whole node box plus a little breathing room must be on screen.
+        const mx = Math.min(16 + (NODE_WIDTH / 2) * v.k, size.width / 2);
+        const my = Math.min(16 + (NODE_HEIGHT / 2) * v.k, size.height / 2);
+        const visible = sx >= mx && sy >= my && sx <= size.width - mx && sy <= size.height - my;
+        return visible ? v : { k: v.k, x: size.width / 2 - node.x * v.k, y: size.height / 2 - node.y * v.k };
+      });
+    },
+    [size.width, size.height],
+  );
+
   // Keep the selected person visible.
   useEffect(() => {
     const node = selectedId ? nodesById.get(selectedId) : undefined;
-    if (!node) return;
-    const sx = node.x * view.k + view.x;
-    const sy = node.y * view.k + view.y;
-    const margin = 60;
-    if (sx < margin || sy < margin || sx > size.width - margin || sy > size.height - margin) centerOn(node);
+    if (node) ensureVisible(node);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, nodesById]);
+
+  // Bring a requested person (typically someone just added) into view.
+  const revealState = useRef<{ token: number; refocused: boolean; done: boolean }>();
+  useEffect(() => {
+    if (!reveal || !hasCanvas) return;
+    if (revealState.current?.token !== reveal.token) {
+      revealState.current = { token: reveal.token, refocused: false, done: false };
+    }
+    const state = revealState.current;
+    if (state.done) return;
+    const node = nodesById.get(reveal.id);
+    if (node) {
+      state.done = true;
+      ensureVisible(node);
+    } else if (!state.refocused && reveal.fallbackFocus !== focusId) {
+      // Outside the drawn area: re-centre on the person they were added to.
+      state.refocused = true;
+      onFocus(reveal.fallbackFocus);
+    } else {
+      state.done = true;
+    }
+  }, [reveal, hasCanvas, nodesById, focusId, onFocus, ensureVisible]);
 
   const zoomAt = (factor: number, cx = size.width / 2, cy = size.height / 2) => {
     setView((v) => {
@@ -329,7 +379,7 @@ export function TreeView({ index, focusId, selectedId, onSelect, onOpen, onFocus
                     transform={`translate(${node.x - NODE_WIDTH / 2},${node.y - NODE_HEIGHT / 2})`}
                     role="button"
                     tabIndex={person.id === tabStopId ? 0 : -1}
-                    aria-label={`${name}${dates ? `, ${dates}` : ''}${hidden ? `, ${hidden} more relatives not shown` : ''}`}
+                    aria-label={`${name}${dates ? `, ${dates}` : ''}${hidden ? `, ${relativesLabel(hidden)} not shown (press F to show them)` : ''}`}
                     aria-pressed={selected}
                     onClick={() => nodeClick(person.id)}
                     onKeyDown={(e) => moveSelection(e, node)}
@@ -361,15 +411,35 @@ export function TreeView({ index, focusId, selectedId, onSelect, onOpen, onFocus
                     <text className="node-dates" x="58" y={lines.length === 1 ? 46 : 54}>
                       {dates}
                     </text>
-                    {hidden !== undefined && (
-                      <g transform={`translate(${NODE_WIDTH - 12},${NODE_HEIGHT - 12})`} className="node-more">
-                        <circle r="9" />
-                        <text textAnchor="middle" dy="0.35em">
-                          +
-                        </text>
-                      </g>
-                    )}
                     <title>{name}</title>
+                  </g>
+                );
+              })}
+            </g>
+            {/* "+" badges: separate buttons (not nested in a node) that re-centre the tree on that person. */}
+            <g className="more-badges">
+              {layout.nodes.map((node) => {
+                const hidden = layout.hiddenRelatives.get(node.person.id);
+                if (hidden === undefined) return null;
+                const label = `Show ${relativesLabel(hidden)} of ${displayName(node.person)}`;
+                return (
+                  <g
+                    key={node.person.id}
+                    className="node-more"
+                    transform={`translate(${node.x + NODE_WIDTH / 2 - 12},${node.y + NODE_HEIGHT / 2 - 12})`}
+                    role="button"
+                    tabIndex={-1}
+                    aria-label={label}
+                    onClick={() => {
+                      if (gesture.current?.moved) return;
+                      onFocus(node.person.id);
+                    }}
+                  >
+                    <circle r="11" />
+                    <text textAnchor="middle" dy="0.35em">
+                      +
+                    </text>
+                    <title>{label}</title>
                   </g>
                 );
               })}
@@ -391,7 +461,7 @@ export function TreeView({ index, focusId, selectedId, onSelect, onOpen, onFocus
           adoptive, step, foster
         </span>
         <span>
-          <span className="legend-more">+</span> more relatives: select, then centre the tree on them
+          <span className="legend-more">+</span> more relatives: click the + to show them
         </span>
       </p>
     </div>

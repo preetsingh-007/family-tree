@@ -1150,8 +1150,16 @@ textarea.input {
   fill: var(--text-muted);
   font-size: 12px;
 }
+.node-more {
+  cursor: pointer;
+}
 .node-more circle {
   fill: var(--accent);
+  stroke: var(--node);
+  stroke-width: 2;
+}
+.node-more:hover circle {
+  filter: brightness(1.15);
 }
 .node-more text {
   fill: #fff;
