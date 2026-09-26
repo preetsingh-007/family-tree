@@ -29,6 +29,8 @@ import { PublishDialog, type PublishOutcome } from './PublishDialog';
 import { EditParentLinkDialog, EditPartnershipDialog, RemoveAssociationDialog } from './RelationshipDialogs';
 import { SecurityInfo } from './SecurityInfo';
 import { TreeView, type RevealRequest } from './TreeView';
+import { usePanes } from './panes';
+import { gridColumns, SidePane } from './SidePane';
 import { useMediaQuery } from './useMediaQuery';
 import type { OpenedTree } from './WelcomeScreen';
 import { ChangePassphraseDialog, TreeSettingsDialog } from './WorkspaceDialogs';
@@ -81,6 +83,12 @@ export function Workspace({ opened, onLock }: Props) {
   const wide = useMediaQuery('(min-width: 1180px)');
   const narrow = useMediaQuery('(max-width: 759px)');
   const layout = wide ? 'wide' : narrow ? 'narrow' : 'medium';
+  const paneControls = usePanes();
+  const { panes } = paneControls;
+  /** Makes sure the details pane is visible (it may have been collapsed). */
+  const showDetails = useCallback(() => {
+    if (layout !== 'narrow') paneControls.setCollapsed('right', false);
+  }, [layout, paneControls]);
 
   const selected = selectedId ? index.people.get(selectedId) : undefined;
 
@@ -233,14 +241,33 @@ export function Workspace({ opened, onLock }: Props) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [save, editor]);
 
+  // "[" and "]" hide or show the side panes.
+  useEffect(() => {
+    if (layout === 'narrow') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if ((event.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (document.querySelector('.modal')) return;
+      if (event.key === '[' && layout === 'wide') paneControls.toggle('left');
+      else if (event.key === ']') paneControls.toggle('right');
+      else return;
+      event.preventDefault();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [layout, paneControls]);
+
   // --- Navigation --------------------------------------------------------------
   const select = useCallback(
     (id: Id, options: { openDetails?: boolean } = {}) => {
       setSelectedId(id);
       setPanel({ mode: 'view' });
-      if (layout !== 'wide' && options.openDetails) setMobileTab('person');
+      if (options.openDetails) {
+        showDetails();
+        if (layout !== 'wide') setMobileTab('person');
+      }
     },
-    [layout],
+    [layout, showDetails],
   );
 
   const showInTree = (id: Id) => {
@@ -251,6 +278,7 @@ export function Workspace({ opened, onLock }: Props) {
 
   const startNewPerson = () => {
     setPanel({ mode: 'new', person: createPerson() });
+    showDetails();
     if (layout !== 'wide') setMobileTab('person');
   };
 
@@ -368,10 +396,7 @@ export function Workspace({ opened, onLock }: Props) {
       focusId={focusId}
       selectedId={selectedId}
       onSelect={(id) => select(id)}
-      onOpen={(id) => {
-        select(id);
-        if (layout !== 'wide') setMobileTab('person');
-      }}
+      onOpen={(id) => select(id, { openDetails: true })}
       reveal={reveal}
       onFocus={(id) => {
         setFocusId(id);
@@ -590,16 +615,37 @@ export function Workspace({ opened, onLock }: Props) {
         </div>
       )}
 
-      <main id="workspace-main" className="workspace-main" tabIndex={-1}>
+      <main
+        id="workspace-main"
+        className="workspace-main"
+        tabIndex={-1}
+        style={{ gridTemplateColumns: gridColumns(layout, panes) }}
+      >
         {layout === 'wide' && (
           <>
-            <aside className="pane pane-people">{peoplePanel}</aside>
+            <SidePane
+              side="left"
+              title="People"
+              icon={PeopleIcon}
+              state={panes.left}
+              controls={paneControls}
+              resizeLabel="Resize people list"
+            >
+              {peoplePanel}
+            </SidePane>
             <section className="pane pane-tree" aria-label="Tree">
               {treePanel}
             </section>
-            <aside className="pane pane-person" aria-label="Person">
+            <SidePane
+              side="right"
+              title="Person"
+              icon={PersonIcon}
+              state={panes.right}
+              controls={paneControls}
+              resizeLabel="Resize details"
+            >
               {personPanel}
-            </aside>
+            </SidePane>
           </>
         )}
         {layout === 'medium' && (
@@ -607,19 +653,28 @@ export function Workspace({ opened, onLock }: Props) {
             <section className="pane pane-tree" aria-label="Tree">
               {treePanel}
             </section>
-            <aside className="pane pane-side">
-              <div className="side-tabs" role="tablist" aria-label="Side panel">
-                <button type="button" role="tab" aria-selected={mobileTab === 'people'} onClick={() => setMobileTab('people')}>
-                  <PeopleIcon /> People
-                </button>
-                <button type="button" role="tab" aria-selected={mobileTab !== 'people'} onClick={() => setMobileTab('person')}>
-                  <PersonIcon /> Person
-                </button>
-              </div>
+            <SidePane
+              side="right"
+              title="Side panel"
+              icon={PersonIcon}
+              state={panes.right}
+              controls={paneControls}
+              resizeLabel="Resize side panel"
+              header={
+                <div className="side-tabs" role="tablist" aria-label="Side panel">
+                  <button type="button" role="tab" aria-selected={mobileTab === 'people'} onClick={() => setMobileTab('people')}>
+                    <PeopleIcon /> People
+                  </button>
+                  <button type="button" role="tab" aria-selected={mobileTab !== 'people'} onClick={() => setMobileTab('person')}>
+                    <PersonIcon /> Person
+                  </button>
+                </div>
+              }
+            >
               <div role="tabpanel" className="side-panel-body">
                 {mobileTab === 'people' ? peoplePanel : personPanel}
               </div>
-            </aside>
+            </SidePane>
           </>
         )}
         {layout === 'narrow' && (

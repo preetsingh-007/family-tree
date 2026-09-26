@@ -906,36 +906,115 @@ textarea.input {
 .workspace-main:focus {
   outline: none;
 }
-.layout-wide .workspace-main {
-  grid-template-columns: 300px minmax(0, 1fr) minmax(380px, 440px);
-}
-.layout-medium .workspace-main {
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 400px);
-}
+/* Wide and medium layouts set grid-template-columns inline from the pane widths. */
 .layout-narrow .workspace-main {
   grid-template-columns: minmax(0, 1fr);
 }
 .pane {
+  position: relative;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
-.pane-people,
-.pane-side {
+.pane-left {
   background: var(--surface);
   border-right: 1px solid var(--border);
 }
-.pane-person,
-.pane-side {
-  border-left: 1px solid var(--border);
+.pane-right {
   background: var(--surface);
+  border-left: 1px solid var(--border);
+}
+.pane-header {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 44px;
+  padding: 0 0.35rem;
+  border-bottom: 1px solid var(--border);
+}
+.pane-header-main {
+  flex: 1;
+  min-width: 0;
+}
+.pane-header .side-tabs {
+  border-bottom: none;
+}
+.pane-title {
+  display: block;
+  padding: 0 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.pane-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
 }
-.pane-side {
-  border-right: none;
+.pane-left .pane-content {
   overflow: hidden;
+}
+.pane-rail {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding-top: 0.8rem;
+  border: none;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.pane-rail:hover {
+  background: var(--surface-2);
+  color: var(--primary);
+}
+.pane-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  z-index: 8;
+  cursor: col-resize;
+  touch-action: none;
+}
+.pane-resizer-left {
+  right: 0;
+}
+.pane-resizer-right {
+  left: 0;
+}
+.pane-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: transparent;
+  transition: background 120ms;
+}
+.pane-resizer-left::after {
+  right: 0;
+}
+.pane-resizer-right::after {
+  left: 0;
+}
+.pane-resizer:hover::after,
+.pane-resizer:focus-visible::after,
+body.resizing-panes .pane-resizer::after {
+  background: var(--primary);
+}
+.pane-resizer:focus-visible {
+  outline: none;
+}
+body.resizing-panes {
+  cursor: col-resize;
+  user-select: none;
 }
 .side-panel-body {
   flex: 1;

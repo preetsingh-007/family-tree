@@ -81,6 +81,11 @@ on GitHub Pages.
   browsers, the same file is overwritten on later saves. Other browsers download
   a new copy each time. The status next to the tree name shows *Unsaved changes*,
   *Encrypting…*, *Saved 14:05*, *Published 14:05*, or *Save failed*.
+- **Side panes** can be resized by dragging their inner edge (or focusing it and
+  using the arrow keys; double-click resets) and hidden with their ‹ › buttons or
+  the `[` and `]` keys. Dragging a pane well past its minimum width hides it.
+  Opening a person shows the details pane again. The layout is remembered on
+  this device.
 - **Undo/redo** (Ctrl/⌘+Z, Ctrl/⌘+Shift+Z) covers the last 100 changes, until
   you lock the tree.
 - The **⋯ menu** has *Save as…*, *Publish to website…*, *Tree name & notes*,
@@ -361,7 +366,8 @@ by accident.
 | -------------------------- | -------------- | ---------- |
 | IndexedDB (`family-tree`)  | An **encrypted** recovery copy of the tree, only while there are unsaved changes. It is deleted after a successful save or when you discard it. | No |
 | Service-worker cache       | The application's code and styles, for offline use. Family data, including the optional published `.ftree`, is never cached. | No |
-| `localStorage`, cookies, URLs, browser history | Nothing | — |
+| `localStorage` (`family-tree.ui.panes.v1`) | Side-pane widths and whether each pane is collapsed — a display preference only | No family data |
+| Cookies, URLs, browser history | Nothing | — |
 
 The recovery copy uses the same key and format as a saved file, so it is protected
 by your passphrase. It lets you continue after an accidental refresh, a crash, or

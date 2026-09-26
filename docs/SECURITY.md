@@ -77,7 +77,7 @@ build, and an independent adversarial review. The result for each requirement:
 | 13 | Sensitive data is not placed in URLs | ✅ There is no routing, and nothing is written to the URL or history. The e2e test asserts the URL holds no names or passphrase. |
 | 14 | No development or test data in production | ✅ Fixtures live in `src/test/` and are never imported by application code. The build check scans for fixture names. |
 | 15 | Export and import do not bypass encryption | ✅ Saving and publishing always encrypt; only the encrypted container is committed to GitHub. Plaintext export needs an explicit warning dialog. Plaintext import forces a new passphrase before the tree opens. The published-tree loader ignores plaintext. |
-| 16 | Browser storage does not undermine security | ✅ Only encrypted drafts are stored in IndexedDB. There is no localStorage and no cookies. The service worker caches only the app shell, and never `.ftree` files. |
+| 16 | Browser storage does not undermine security | ✅ Only encrypted drafts are stored in IndexedDB. localStorage holds only the side-pane widths and collapsed state (no family data, tested); there are no cookies. The service worker caches only the app shell, and never `.ftree` files. |
 | 17 | Dependencies introduce no obvious problems | ✅ Three runtime dependencies (react, markdown-it, zod), none of which make network requests. `npm audit` reports 0 vulnerabilities. There is no third-party crypto. |
 | 18 | GitHub Pages deployment needs no plaintext secrets | ✅ It uses only the built-in OIDC token for Pages. Actions are pinned to commit SHAs, and permissions are least-privilege. The editor's publishing token is never part of the site: it is pasted in, kept in memory only, and sent only to `api.github.com`. |
 

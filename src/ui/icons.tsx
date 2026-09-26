@@ -96,6 +96,8 @@ export const FileIcon = icon(
     <path d="M14 3v6h6" />
   </>,
 );
+export const ChevronLeftIcon = icon(<path d="m15 18-6-6 6-6" />);
+export const ChevronRightIcon = icon(<path d="m9 18 6-6-6-6" />);
 export const PhotoIcon = icon(
   <>
     <rect x="3" y="5" width="18" height="14" rx="2" />
