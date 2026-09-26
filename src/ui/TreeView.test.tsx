@@ -11,6 +11,16 @@ beforeEach(async () => {
 });
 
 const diagram = () => screen.getByRole('group', { name: 'Family tree' });
+/** Where a person's box centre is drawn on screen (the canvas is 800 × 600 in tests). */
+function screenPosition(name: string) {
+  const node = treeNode(name)!;
+  const numbers = (text: string) => text.match(/-?[\d.]+/g)!.map(Number) as [number, number, number?];
+  const [nx, ny] = numbers(node.getAttribute('transform')!);
+  const view = node.closest('g[transform*="scale"]')!.getAttribute('transform')!;
+  const [vx, vy, k = 1] = numbers(view);
+  const box = node.querySelector('rect.node-box')!;
+  return { x: vx + (nx + Number(box.getAttribute('width')) / 2) * k, y: vy + (ny + Number(box.getAttribute('height')) / 2) * k };
+}
 const treeNode = (name: string) => within(diagram()).queryByRole('button', { name: new RegExp(`^${name},|^${name}$`) });
 
 /** Adds a child to the person shown in the details panel, then moves the details panel (not the tree) to that child. */
@@ -56,6 +66,10 @@ describe('tree view', () => {
     // Alpha appears and nothing else disappears: the view grew instead of jumping.
     expect(treeNode('Alpha Test')).not.toBeNull();
     expect(treeNode('Delta Test')).not.toBeNull();
+    // The person whose "+" was clicked is brought to the middle of the screen.
+    const bravo = screenPosition('Bravo Test');
+    expect(bravo.x).toBeCloseTo(400, 0);
+    expect(bravo.y).toBeCloseTo(300, 0);
     expect(screen.getByRole('heading', { level: 2, name: 'Delta Test' })).toBeInTheDocument();
 
     // "Reset view" undoes it.

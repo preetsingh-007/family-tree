@@ -241,6 +241,15 @@ export function TreeView({ index, focusId, selectedId, onSelect, onOpen, onFocus
     }
   }, [reveal, hasCanvas, nodesByKey, focusId, onFocus, ensureVisible]);
 
+  // After expanding someone in place, centre them once the new layout is drawn.
+  const centreAfterLayout = useRef<Id>();
+  useEffect(() => {
+    const id = centreAfterLayout.current;
+    if (!id) return;
+    centreAfterLayout.current = undefined;
+    centerOn(nodesByKey.get(id));
+  }, [nodesByKey, centerOn]);
+
   const zoomAt = (factor: number, cx = size.width / 2, cy = size.height / 2) => {
     setView((v) => {
       const k = clampZoom(v.k * factor);
@@ -269,13 +278,17 @@ export function TreeView({ index, focusId, selectedId, onSelect, onOpen, onFocus
 
   // --- Expanding and collapsing ------------------------------------------------------------
 
-  /** Shows a person's hidden relatives in place; if that cannot be done here, re-centres on them. */
+  /**
+   * Shows a person's hidden relatives in place and pans to put them in the middle
+   * of the screen; if that cannot be done here, re-centres the tree on them.
+   */
   const expand = (id: Id) => {
     const before = layout.hiddenRelatives.get(id) ?? 0;
     if (Number.isFinite(radius) && !choices.expanded.has(id)) {
       const trial = { ...choices, expanded: new Set([...choices.expanded, id]) };
       const after = computeLayout(index, focusId, radius, trial).hiddenRelatives.get(id) ?? 0;
       if (after < before) {
+        centreAfterLayout.current = id;
         updateChoices(() => ({ expanded: trial.expanded }));
         return;
       }
