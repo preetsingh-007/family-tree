@@ -87,10 +87,10 @@ describe('publishing to GitHub', () => {
     fake.files.set(PUBLISH_PATH, await encryptTree(complexFamily().tree, await createSessionKey(PASSPHRASE)));
     const user = userEvent.setup();
     render(<App />);
-    const card = await screen.findByRole('region', { name: 'Open the family tree on this site' });
+    const card = await screen.findByRole('region', { name: 'Open the published tree' });
     await user.click(within(card).getByRole('button', { name: 'Unlock' }));
-    await user.type(within(card).getByLabelText('Passphrase', { selector: 'input' }), PASSPHRASE);
-    await user.click(within(card).getByRole('button', { name: /Unlock/ }));
+    await user.type(screen.getByLabelText('Passphrase', { selector: 'input' }), PASSPHRASE);
+    await user.click(screen.getByRole('button', { name: /Unlock/ }));
     await screen.findByRole('button', { name: 'More actions' }, { timeout: 10_000 });
     expect(within(peopleList()).getByRole('button', { name: /^Arthur Testfield/ })).toBeInTheDocument();
 

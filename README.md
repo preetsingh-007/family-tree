@@ -49,7 +49,7 @@ on GitHub Pages.
 
 - **Start a new family tree.** Choose a name and a passphrase.
 - **Open an encrypted file.** Open a `.ftree` file you saved earlier.
-- **Open the family tree on this site.** This appears only if the site publishes
+- **Open the published tree.** This appears only if the site publishes
   an encrypted tree (see [Publishing the family tree](#publishing-the-family-tree-to-the-website)).
 - **Recover unsaved work.** This appears if the browser closed while you had unsaved
   changes.
@@ -174,7 +174,7 @@ actions are pinned to commit SHAs.
 
 The whole family, including any unconnected branches, lives in **one encrypted
 file**: `public/family-tree.ftree` in this repository. Anyone who opens the website
-and knows the passphrase can view it with **Open the family tree on this site**.
+and knows the passphrase can view it with **Open the published tree**.
 Only you, as the holder of a GitHub access token, can change it.
 
 **One-time setup: create an access token**

@@ -742,11 +742,15 @@ textarea.input {
 }
 .welcome-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 1.25rem;
-  align-items: start;
+  /* Every card has the same height, across all rows. */
+  grid-auto-rows: 1fr;
+  align-items: stretch;
 }
 .welcome-card {
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -758,6 +762,18 @@ textarea.input {
   align-items: center;
   gap: 0.6rem;
   font-size: 1.2rem;
+}
+.welcome-card-body {
+  flex: 1;
+}
+/* Actions sit at the bottom of every card, all the same size. */
+.welcome-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.welcome-card-actions .button {
+  flex: 1;
 }
 .welcome-card-icon {
   display: inline-flex;

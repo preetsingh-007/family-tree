@@ -266,8 +266,8 @@ describe('saving and opening', () => {
     render(<App />);
     const card = await screen.findByRole('region', { name: 'Recover unsaved work' });
     await user.click(within(card).getByRole('button', { name: 'Recover' }));
-    await user.type(within(card).getByLabelText('Passphrase', { selector: 'input' }), PASSPHRASE);
-    await user.click(within(card).getByRole('button', { name: /Recover/ }));
+    await user.type(screen.getByLabelText('Passphrase', { selector: 'input' }), PASSPHRASE);
+    await user.click(screen.getByRole('button', { name: /Recover/ }));
     await screen.findByRole('button', { name: 'More actions' }, { timeout: 10_000 });
     expect(within(peopleList()).getByRole('button', { name: /^Draft Survivor/ })).toBeInTheDocument();
   });

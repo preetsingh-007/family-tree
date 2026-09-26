@@ -105,10 +105,10 @@ test('opens an encrypted tree published with the site', async ({ page }) => {
   const container = await encryptText(JSON.stringify(tree), await createSessionKey(PASSPHRASE));
   await page.route('**/family-tree.ftree', (route) => route.fulfill({ body: container, contentType: 'application/json' }));
   await page.goto('./');
-  const card = page.getByRole('region', { name: 'Open the family tree on this site' });
+  const card = page.getByRole('region', { name: 'Open the published tree' });
   await card.getByRole('button', { name: 'Unlock' }).click();
-  await card.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
-  await card.getByRole('button', { name: 'Unlock' }).click();
+  await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
+  await page.getByRole('button', { name: 'Unlock' }).click();
   await expect(page.getByRole('button', { name: /Hosted family/ })).toBeVisible({ timeout: 15_000 });
 });
 

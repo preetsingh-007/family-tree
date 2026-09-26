@@ -36,7 +36,7 @@ type Pending =
   | { kind: 'encrypted-file'; text: string; fileName: string; handle?: FileHandle }
   | { kind: 'plaintext-import'; tree: FamilyTreeDocument; fileName: string };
 
-function Card({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+function Card({ icon, title, children, actions }: { icon: ReactNode; title: string; children: ReactNode; actions?: ReactNode }) {
   const id = useId();
   return (
     <section className="welcome-card" aria-labelledby={id}>
@@ -46,7 +46,8 @@ function Card({ icon, title, children }: { icon: ReactNode; title: string; child
         </span>
         {title}
       </h2>
-      {children}
+      <div className="welcome-card-body">{children}</div>
+      {actions && <div className="welcome-card-actions">{actions}</div>}
     </section>
   );
 }
@@ -248,7 +249,7 @@ export function WelcomeScreen({ onOpen: onOpenTree }: Props) {
     >
       <p>
         This device holds an encrypted recovery copy of unsaved changes from{' '}
-        {draft ? new Date(draft.savedAt).toLocaleString() : 'an earlier session'}. There is room for only one, so it will be
+        {draft ? new Date(draft.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'an earlier session'}. There is room for only one, so it will be
         replaced as soon as the tree you are opening has unsaved changes (a new or imported tree has them straight away).
       </p>
       <p>To keep it, cancel and choose “Recover unsaved work” first, then save it to a file.</p>
@@ -295,6 +296,50 @@ export function WelcomeScreen({ onOpen: onOpenTree }: Props) {
     );
   }
 
+  // A form opened from a card replaces the grid with a single focused card.
+  if (active === 'new') {
+    return (
+      <main className="welcome welcome-focused" id="main">
+        <Card icon={<PlusIcon />} title="Start a new family tree">
+          <NewTreeForm onCancel={() => setActive('none')} onCreated={(tree, session) => onOpen({ tree, session, saved: false })} />
+        </Card>
+        {replaceDraftDialog}
+      </main>
+    );
+  }
+
+  if (active === 'hosted' && hosted) {
+    return (
+      <main className="welcome welcome-focused" id="main">
+        <Card icon={<TreeIcon />} title="Open the published tree">
+          <UnlockForm
+            text={hosted}
+            submitLabel="Unlock"
+            onCancel={() => setActive('none')}
+            onUnlocked={({ tree, session, sha }) => onOpen({ tree, session, saved: true, baseSha: sha })}
+          />
+        </Card>
+        {replaceDraftDialog}
+      </main>
+    );
+  }
+
+  if (active === 'draft' && draft) {
+    return (
+      <main className="welcome welcome-focused" id="main">
+        <Card icon={<LockIcon />} title="Recover unsaved work">
+          <p className="muted">Unsaved changes from {new Date(draft.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
+          <UnlockForm
+            text={draft.container}
+            submitLabel="Recover"
+            onCancel={() => setActive('none')}
+            onUnlocked={({ tree, session }) => onOpen({ tree, session, saved: false, fromDraft: true })}
+          />
+        </Card>
+      </main>
+    );
+  }
+
   return (
     <main className="welcome" id="main">
       <header className="welcome-hero">
@@ -311,56 +356,50 @@ export function WelcomeScreen({ onOpen: onOpenTree }: Props) {
 
       <div className="welcome-grid">
         {draft && (
-          <Card icon={<LockIcon />} title="Recover unsaved work">
-            <p>
-              Unsaved changes from {new Date(draft.savedAt).toLocaleString()} were kept (encrypted) on this device. Enter the
-              passphrase for that tree to continue where you left off.
-            </p>
-            {active === 'draft' ? (
-              <UnlockForm
-                text={draft.container}
-                submitLabel="Recover"
-                onCancel={() => setActive('none')}
-                onUnlocked={({ tree, session }) => onOpen({ tree, session, saved: false, fromDraft: true })}
-              />
-            ) : (
-              <div className="button-row">
+          <Card
+            icon={<LockIcon />}
+            title="Recover unsaved work"
+            actions={
+              <>
                 <button type="button" className="button button-primary" onClick={() => setActive('draft')}>
                   Recover
                 </button>
-                <button type="button" className="button button-danger-quiet" onClick={() => setConfirmDiscardDraft(true)}>
+                <button type="button" className="button" onClick={() => setConfirmDiscardDraft(true)}>
                   Discard
                 </button>
-              </div>
-            )}
+              </>
+            }
+          >
+            <p>Encrypted unsaved changes from {new Date(draft.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} are on this device.</p>
           </Card>
         )}
 
         {hosted && (
-          <Card icon={<TreeIcon />} title="Open the family tree on this site">
-            <p>This website includes an encrypted family tree. Enter its passphrase to view and edit it.</p>
-            {active === 'hosted' ? (
-              <UnlockForm
-                text={hosted}
-                submitLabel="Unlock"
-                onCancel={() => setActive('none')}
-                onUnlocked={({ tree, session, sha }) => onOpen({ tree, session, saved: true, baseSha: sha })}
-              />
-            ) : (
+          <Card
+            icon={<TreeIcon />}
+            title="Open the published tree"
+            actions={
               <button type="button" className="button button-primary" onClick={() => setActive('hosted')}>
                 Unlock
               </button>
-            )}
+            }
+          >
+            <p>View and edit the encrypted tree published with this website.</p>
           </Card>
         )}
 
-        <Card icon={<FileIcon />} title="Open an encrypted file">
+        <Card
+          icon={<FileIcon />}
+          title="Open an encrypted file"
+          actions={
+            <button type="button" className="button button-primary" onClick={() => void openEncrypted()}>
+              Choose file…
+            </button>
+          }
+        >
           <p>
             Open a <code>{ENCRYPTED_EXTENSION}</code> file you saved earlier.
           </p>
-          <button type="button" className="button button-primary" onClick={() => void openEncrypted()}>
-            Choose file…
-          </button>
           <input
             ref={encryptedInput}
             type="file"
@@ -376,27 +415,30 @@ export function WelcomeScreen({ onOpen: onOpenTree }: Props) {
           />
         </Card>
 
-        <Card icon={<PlusIcon />} title="Start a new family tree">
-          {active === 'new' ? (
-            <NewTreeForm onCancel={() => setActive('none')} onCreated={(tree, session) => onOpen({ tree, session, saved: false })} />
-          ) : (
-            <>
-              <p>Create an empty tree protected by a passphrase you choose.</p>
-              <button type="button" className="button button-primary" onClick={() => setActive('new')}>
-                New tree
-              </button>
-            </>
-          )}
+        <Card
+          icon={<PlusIcon />}
+          title="Start a new family tree"
+          actions={
+            <button type="button" className="button button-primary" onClick={() => setActive('new')}>
+              New tree
+            </button>
+          }
+        >
+          <p>Create an empty tree protected by a passphrase you choose.</p>
         </Card>
 
-        <Card icon={<FileIcon />} title="Import an unencrypted backup">
+        <Card
+          icon={<FileIcon />}
+          title="Import a backup"
+          actions={
+            <button type="button" className="button button-primary" onClick={() => plaintextInput.current?.click()}>
+              Choose file…
+            </button>
+          }
+        >
           <p>
-            Open a <code>.json</code> export (for example one made by “Export unencrypted JSON”). You will be asked to protect it
-            with a passphrase.
+            Open an unencrypted <code>.json</code> export and protect it with a passphrase.
           </p>
-          <button type="button" className="button" onClick={() => plaintextInput.current?.click()}>
-            Choose file…
-          </button>
           <input
             ref={plaintextInput}
             type="file"
